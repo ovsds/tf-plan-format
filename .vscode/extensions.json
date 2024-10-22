@@ -1,3 +1,10 @@
 {
-  "recommendations": ["fill-labs.dependi", "rust-lang.rust-analyzer", "ms-azuretools.vscode-docker", "GitHub.copilot"]
+  "recommendations": [
+    "fill-labs.dependi",
+    "rust-lang.rust-analyzer",
+    "ms-azuretools.vscode-docker",
+    "GitHub.copilot",
+    "editorconfig.editorconfig",
+    "4ops.terraform"
+  ]
 }
