@@ -1,0 +1,21 @@
+version: 3
+
+silent: true
+
+includes:
+  terraform:
+    internal: true
+    taskfile: ./terraform
+
+tasks:
+  init:
+    desc: Initialize shims
+    cmds:
+      - echo 'Initializing terraform...'
+      - task: terraform:init
+
+  clean:
+    desc: Clean shims
+    cmds:
+      - echo 'Cleaning terraform...'
+      - task: terraform:clean
