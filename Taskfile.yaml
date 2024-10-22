@@ -7,9 +7,6 @@ includes:
     internal: true
     taskfile: .shims
 
-  terraform:
-    taskfile: .shims/terraform
-
 vars:
   NENV: "node_modules"
 
