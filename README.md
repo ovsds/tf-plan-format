@@ -12,6 +12,7 @@ Terraform Plan Format
 
 - [Taskfile](https://taskfile.dev/installation/)
 - [nvm](https://github.com/nvm-sh/nvm?tab=readme-ov-file#install--update-script)
+- [rust](https://www.rust-lang.org/tools/install)
 
 ### Taskfile commands
 

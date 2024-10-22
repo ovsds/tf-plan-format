@@ -1,0 +1,24 @@
+[package]
+name = "tf_plan_format"
+description = "Converts Terraform plan JSON to templated output"
+version = "0.1.0"
+edition = "2021"
+license-file = "LICENSE"
+repository = "https://github.com/ovsds/tf-plan-format"
+keywords = ["terraform", "formatting", "text-processing"]
+categories = ["development-tools::terraform"]
+
+[dependencies]
+clap = { version = "4.5.18", features = ["derive"] }
+exitcode = "1.1.2"
+
+[dev-dependencies]
+assert_cmd = "2.0.14"
+
+[lints.clippy]
+implicit_return = "deny"
+needless_return = "allow"
+pedantic = { level = "deny", priority = -1 }
+unnecessary-wraps = "allow"
+cargo = { level = "deny", priority = -1 }
+multiple_crate_versions = "allow"
