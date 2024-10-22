@@ -6,6 +6,9 @@ on:
       - opened
       - reopened
       - synchronize
+  push:
+    branches:
+      - main
 
 jobs:
   check-pr:
@@ -21,6 +24,9 @@ jobs:
       - name: Setup Environment
         uses: ./.github/actions/setup_environment
 
+      - name: Rust cache
+        uses: Swatinem/rust-cache@v2
+
       - name: Install Dependencies
         run: |
           task init
@@ -32,3 +38,7 @@ jobs:
       - name: Test PR
         run: |
           task test
+
+      - name: Coverage
+        run: |
+          task test-coverage

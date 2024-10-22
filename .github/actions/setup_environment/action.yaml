@@ -14,3 +14,10 @@ runs:
       uses: arduino/setup-task@v1
       with:
         version: ${{ inputs.task-version }}
+
+    - name: Install Rust
+      shell: bash
+      run: rustup update stable
+
+    - name: Install cargo-llvm-cov
+      uses: taiki-e/install-action@cargo-llvm-cov

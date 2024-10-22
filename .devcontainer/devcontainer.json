@@ -1,0 +1,12 @@
+{
+  "customizations": {
+    "vscode": {
+      "extensions": ["fill-labs.dependi", "rust-lang.rust-analyzer", "ms-azuretools.vscode-docker", "GitHub.copilot"],
+      "settings": {
+        "files.autoSave": "afterDelay",
+        "files.autoSaveDelay": 1000
+      }
+    }
+  },
+  "dockerFile": "Dockerfile"
+}
