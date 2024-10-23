@@ -7,19 +7,13 @@ includes:
     taskfile: ../../.shims/terraform
 
 tasks:
-  generate_initial_state:
-    desc: Generate initial state for directory, expects initial folder with terraform files
+  generate_plan:
+    desc: Generate diff plan for directory, expects target folder with terraform files and terraform.tfstate
     cmds:
       - task: terraform:run
         vars: { COMMAND: "-chdir={{.DIR}}/initial init" }
       - task: terraform:run
         vars: { COMMAND: "-chdir={{.DIR}}/initial apply -state-out=../terraform.tfstate" }
-    requires:
-      vars: ["DIR"]
-
-  generate_diff_plan:
-    desc: Generate diff plan for directory, expects target folder with terraform files and terraform.tfstate
-    cmds:
       - task: terraform:run
         vars: { COMMAND: "-chdir={{.DIR}}/target init" }
       - task: terraform:run
