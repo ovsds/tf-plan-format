@@ -12,6 +12,7 @@
           "provider_name": "registry.terraform.io/hashicorp/random",
           "schema_version": 0,
           "values": {
+            "id": "driving-fowl",
             "keepers": null,
             "length": 2,
             "prefix": null,
@@ -30,22 +31,53 @@
       "name": "example",
       "provider_name": "registry.terraform.io/hashicorp/random",
       "change": {
-        "actions": ["create"],
-        "before": null,
-        "after": {
+        "actions": ["no-op"],
+        "before": {
+          "id": "driving-fowl",
           "keepers": null,
           "length": 2,
           "prefix": null,
           "separator": "-"
         },
-        "after_unknown": {
-          "id": true
+        "after": {
+          "id": "driving-fowl",
+          "keepers": null,
+          "length": 2,
+          "prefix": null,
+          "separator": "-"
         },
-        "before_sensitive": false,
+        "after_unknown": {},
+        "before_sensitive": {},
         "after_sensitive": {}
       }
     }
   ],
+  "prior_state": {
+    "format_version": "1.0",
+    "terraform_version": "1.7.5",
+    "values": {
+      "root_module": {
+        "resources": [
+          {
+            "address": "random_pet.example",
+            "mode": "managed",
+            "type": "random_pet",
+            "name": "example",
+            "provider_name": "registry.terraform.io/hashicorp/random",
+            "schema_version": 0,
+            "values": {
+              "id": "driving-fowl",
+              "keepers": null,
+              "length": 2,
+              "prefix": null,
+              "separator": "-"
+            },
+            "sensitive_values": {}
+          }
+        ]
+      }
+    }
+  },
   "configuration": {
     "provider_config": {
       "random": {
@@ -67,6 +99,6 @@
       ]
     }
   },
-  "timestamp": "2024-10-22T22:43:45Z",
+  "timestamp": "2024-10-24T20:26:27Z",
   "errored": false
 }

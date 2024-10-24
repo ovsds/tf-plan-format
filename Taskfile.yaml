@@ -7,6 +7,10 @@ includes:
     internal: true
     taskfile: .shims
 
+  tests-data-plans:
+    internal: true
+    taskfile: tests/data/plans
+
 vars:
   NENV: "node_modules"
 
@@ -90,6 +94,12 @@ tasks:
     cmds:
       - cargo llvm-cov --html
       - cargo llvm-cov --open
+
+  test-generate-data:
+    desc: Generate test data
+    cmds:
+      - echo 'Generating test data...'
+      - task: tests-data-plans:generate_all
 
   clean:
     desc: Clean project environment

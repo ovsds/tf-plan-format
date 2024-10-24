@@ -1,0 +1,69 @@
+{
+  "format_version": "1.2",
+  "terraform_version": "1.7.5",
+  "planned_values": {
+    "root_module": {}
+  },
+  "resource_changes": [
+    {
+      "address": "random_pet.example",
+      "mode": "managed",
+      "type": "random_pet",
+      "name": "example",
+      "provider_name": "registry.terraform.io/hashicorp/random",
+      "change": {
+        "actions": ["delete"],
+        "before": {
+          "id": "civil-mongoose",
+          "keepers": null,
+          "length": 2,
+          "prefix": null,
+          "separator": "-"
+        },
+        "after": null,
+        "after_unknown": {},
+        "before_sensitive": {},
+        "after_sensitive": false
+      },
+      "action_reason": "delete_because_no_resource_config"
+    }
+  ],
+  "prior_state": {
+    "format_version": "1.0",
+    "terraform_version": "1.7.5",
+    "values": {
+      "root_module": {
+        "resources": [
+          {
+            "address": "random_pet.example",
+            "mode": "managed",
+            "type": "random_pet",
+            "name": "example",
+            "provider_name": "registry.terraform.io/hashicorp/random",
+            "schema_version": 0,
+            "values": {
+              "id": "civil-mongoose",
+              "keepers": null,
+              "length": 2,
+              "prefix": null,
+              "separator": "-"
+            },
+            "sensitive_values": {}
+          }
+        ]
+      }
+    }
+  },
+  "configuration": {
+    "provider_config": {
+      "random": {
+        "name": "random",
+        "full_name": "registry.terraform.io/hashicorp/random",
+        "version_constraint": "3.6.3"
+      }
+    },
+    "root_module": {}
+  },
+  "timestamp": "2024-10-24T20:26:16Z",
+  "errored": false
+}
