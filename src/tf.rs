@@ -49,7 +49,7 @@ pub struct Plan {
     // planned_values
     resource_changes: Vec<ResourceChange>,
     // configuration
-    pub timestamp: String,
+    timestamp: String,
     errored: bool,
 }
 

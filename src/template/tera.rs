@@ -1,7 +1,7 @@
 use crate::tf;
 use core::str;
 
-pub const DEFAULT_GITHUB_MARKDOWN_TEMPLATE: &str = "
+pub const GITHUB_MARKDOWN_TEMPLATE: &str = "
 {%- for plan_key, plan in data.plans -%}
 <details>
 <summary>{{ plan_key }}</summary>
@@ -241,7 +241,7 @@ mod tests {
     #[test]
     fn test_render() {
         let data = tf::tests::get_test_data();
-        let result = render(&data, DEFAULT_GITHUB_MARKDOWN_TEMPLATE).unwrap();
+        let result = render(&data, GITHUB_MARKDOWN_TEMPLATE).unwrap();
 
         let expected = utils::test::get_test_data_file_contents("renders/tera/github_markdown");
         assert_eq!(expected, result);
