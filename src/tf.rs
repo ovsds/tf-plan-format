@@ -2,14 +2,13 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Serialize, Deserialize, Debug, PartialEq)]
 #[serde(untagged)]
-enum Value {
+pub enum Value {
     String(String),
     Integer(i64),
     Float(f64),
     Boolean(bool),
     Array(Vec<Value>),
     Object(std::collections::HashMap<String, Value>),
-    Raw(serde_json::Value),
 }
 
 #[derive(Serialize, Deserialize, Debug, PartialEq)]
@@ -50,53 +49,79 @@ pub struct Plan {
     // planned_values
     resource_changes: Vec<ResourceChange>,
     // configuration
-    timestamp: String,
+    pub timestamp: String,
     errored: bool,
 }
 
+#[derive(Serialize, Debug, PartialEq)]
+pub struct Data {
+    pub plans: std::collections::HashMap<String, Plan>,
+}
+
 #[cfg(test)]
-mod tests {
+pub mod tests {
     use super::*;
     use crate::utils;
 
-    fn get_expected_add_plan() -> Plan {
-        return Plan {
-            format_version: "1.2".to_string(),
-            terraform_version: "1.7.5".to_string(),
-            resource_changes: vec![ResourceChange {
-                address: "random_pet.example".to_string(),
-                mode: "managed".to_string(),
-                type_: "random_pet".to_string(),
-                name: "example".to_string(),
-                provider_name: "registry.terraform.io/hashicorp/random".to_string(),
-                change: ResourceChangeChange {
-                    actions: vec![ResourceChangeChangeAction::Create],
-                    before: None,
-                    after: {
-                        let mut map = std::collections::HashMap::new();
-                        map.insert("keepers".to_string(), None);
-                        map.insert("length".to_string(), Some(Value::Integer(2)));
-                        map.insert("prefix".to_string(), None);
-                        map.insert(
-                            "separator".to_string(),
-                            Some(Value::String("-".to_string())),
-                        );
+    pub enum TestPlan {
+        Add,
+    }
 
-                        map
+    pub fn get_test_data() -> Data {
+        let mut plans = std::collections::HashMap::new();
+        plans.insert("add".to_string(), get_test_plan(TestPlan::Add));
+
+        return Data { plans };
+    }
+
+    pub fn get_test_plan(plan: TestPlan) -> Plan {
+        match plan {
+            TestPlan::Add => Plan {
+                format_version: "1.2".to_string(),
+                terraform_version: "1.7.5".to_string(),
+                resource_changes: vec![ResourceChange {
+                    address: "random_pet.example".to_string(),
+                    mode: "managed".to_string(),
+                    type_: "random_pet".to_string(),
+                    name: "example".to_string(),
+                    provider_name: "registry.terraform.io/hashicorp/random".to_string(),
+                    change: ResourceChangeChange {
+                        actions: vec![ResourceChangeChangeAction::Create],
+                        before: None,
+                        after: {
+                            let mut map = std::collections::HashMap::new();
+                            map.insert("keepers".to_string(), None);
+                            map.insert("length".to_string(), Some(Value::Integer(2)));
+                            map.insert("prefix".to_string(), None);
+                            map.insert(
+                                "separator".to_string(),
+                                Some(Value::String("-".to_string())),
+                            );
+
+                            map
+                        },
                     },
-                },
-            }],
-            timestamp: "2024-10-22T22:43:45Z".to_string(),
-            errored: false,
+                }],
+                timestamp: "2024-10-22T22:43:45Z".to_string(),
+                errored: false,
+            },
+        }
+    }
+
+    pub fn get_test_plan_json(plan: TestPlan) -> String {
+        let path = match plan {
+            TestPlan::Add => "plans/add/terraform.tfplan.json",
         };
+        return utils::test::get_test_data_file_contents(path);
     }
 
     #[test]
     fn test_deserialize() {
-        let raw = utils::test::get_test_data_file_contents("plans/add/terraform.tfplan.json");
+        let expected = get_test_plan(TestPlan::Add);
+
+        let raw = get_test_plan_json(TestPlan::Add);
         let result = serde_json::from_str::<Plan>(&raw).unwrap();
 
-        let expected = get_expected_add_plan();
         assert_eq!(expected, result);
     }
 }
