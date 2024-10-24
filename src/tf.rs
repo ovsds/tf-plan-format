@@ -102,7 +102,7 @@ pub mod tests {
                         },
                     },
                 }],
-                timestamp: "2024-10-22T22:43:45Z".to_string(),
+                timestamp: "2024-10-24T20:26:28Z".to_string(),
                 errored: false,
             },
         }
@@ -110,7 +110,7 @@ pub mod tests {
 
     pub fn get_test_plan_json(plan: TestPlan) -> String {
         let path = match plan {
-            TestPlan::Add => "plans/add/terraform.tfplan.json",
+            TestPlan::Add => "plans/create/terraform.tfplan.json",
         };
         return utils::test::get_test_data_file_contents(path);
     }
