@@ -6,19 +6,18 @@
   },
   "resource_changes": [
     {
-      "address": "random_pet.example",
+      "address": "terraform_data.foo-bar",
       "mode": "managed",
-      "type": "random_pet",
-      "name": "example",
-      "provider_name": "registry.terraform.io/hashicorp/random",
+      "type": "terraform_data",
+      "name": "foo-bar",
+      "provider_name": "terraform.io/builtin/terraform",
       "change": {
         "actions": ["delete"],
         "before": {
-          "id": "civil-mongoose",
-          "keepers": null,
-          "length": 2,
-          "prefix": null,
-          "separator": "-"
+          "id": "96202d3f-5e6b-8c7f-8e5a-7d1599601bd8",
+          "input": "foo",
+          "output": "foo",
+          "triggers_replace": null
         },
         "after": null,
         "after_unknown": {},
@@ -35,18 +34,17 @@
       "root_module": {
         "resources": [
           {
-            "address": "random_pet.example",
+            "address": "terraform_data.foo-bar",
             "mode": "managed",
-            "type": "random_pet",
-            "name": "example",
-            "provider_name": "registry.terraform.io/hashicorp/random",
+            "type": "terraform_data",
+            "name": "foo-bar",
+            "provider_name": "terraform.io/builtin/terraform",
             "schema_version": 0,
             "values": {
-              "id": "civil-mongoose",
-              "keepers": null,
-              "length": 2,
-              "prefix": null,
-              "separator": "-"
+              "id": "96202d3f-5e6b-8c7f-8e5a-7d1599601bd8",
+              "input": "foo",
+              "output": "foo",
+              "triggers_replace": null
             },
             "sensitive_values": {}
           }
@@ -55,15 +53,8 @@
     }
   },
   "configuration": {
-    "provider_config": {
-      "random": {
-        "name": "random",
-        "full_name": "registry.terraform.io/hashicorp/random",
-        "version_constraint": "3.6.3"
-      }
-    },
     "root_module": {}
   },
-  "timestamp": "2024-10-24T20:26:16Z",
+  "timestamp": "2024-10-25T21:40:17Z",
   "errored": false
 }

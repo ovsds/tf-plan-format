@@ -1,12 +1,3 @@
-terraform {
-  required_providers {
-    local = {
-      source = "hashicorp/local"
-      version = "2.5.2"
-    }
-  }
-}
-
-resource "terraform_data" "replacement" {
+resource "terraform_data" "foo-bar" {
   input = "bar"
 }
