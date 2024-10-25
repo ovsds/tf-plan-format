@@ -5,17 +5,15 @@
     "root_module": {
       "resources": [
         {
-          "address": "random_pet.example",
+          "address": "terraform_data.foo-bar",
           "mode": "managed",
-          "type": "random_pet",
-          "name": "example",
-          "provider_name": "registry.terraform.io/hashicorp/random",
+          "type": "terraform_data",
+          "name": "foo-bar",
+          "provider_name": "terraform.io/builtin/terraform",
           "schema_version": 0,
           "values": {
-            "keepers": null,
-            "length": 2,
-            "prefix": null,
-            "separator": "-"
+            "input": "foo",
+            "triggers_replace": null
           },
           "sensitive_values": {}
         }
@@ -24,22 +22,21 @@
   },
   "resource_changes": [
     {
-      "address": "random_pet.example",
+      "address": "terraform_data.foo-bar",
       "mode": "managed",
-      "type": "random_pet",
-      "name": "example",
-      "provider_name": "registry.terraform.io/hashicorp/random",
+      "type": "terraform_data",
+      "name": "foo-bar",
+      "provider_name": "terraform.io/builtin/terraform",
       "change": {
         "actions": ["create"],
         "before": null,
         "after": {
-          "keepers": null,
-          "length": 2,
-          "prefix": null,
-          "separator": "-"
+          "input": "foo",
+          "triggers_replace": null
         },
         "after_unknown": {
-          "id": true
+          "id": true,
+          "output": true
         },
         "before_sensitive": false,
         "after_sensitive": {}
@@ -48,25 +45,29 @@
   ],
   "configuration": {
     "provider_config": {
-      "random": {
-        "name": "random",
-        "full_name": "registry.terraform.io/hashicorp/random",
-        "version_constraint": "3.6.3"
+      "terraform": {
+        "name": "terraform",
+        "full_name": "terraform.io/builtin/terraform"
       }
     },
     "root_module": {
       "resources": [
         {
-          "address": "random_pet.example",
+          "address": "terraform_data.foo-bar",
           "mode": "managed",
-          "type": "random_pet",
-          "name": "example",
-          "provider_config_key": "random",
+          "type": "terraform_data",
+          "name": "foo-bar",
+          "provider_config_key": "terraform",
+          "expressions": {
+            "input": {
+              "constant_value": "foo"
+            }
+          },
           "schema_version": 0
         }
       ]
     }
   },
-  "timestamp": "2024-10-24T20:26:28Z",
+  "timestamp": "2024-10-25T21:40:18Z",
   "errored": false
 }

@@ -1,13 +1,5 @@
-terraform {
-  required_providers {
-    random = {
-      source = "hashicorp/random"
-      version = "3.6.3"
-    }
+resource "null_resource" "foo-bar" {
+  triggers = {
+    always_run = "${timestamp()}"
   }
-}
-
-resource "random_pet" "example" {
-  length = 3
-  separator = ","
 }

@@ -1,14 +1,12 @@
 <details>
-<summary>add</summary>
+<summary>create</summary>
 <details>
-<summary>✅random_pet.example
+<summary>✅terraform_data.foo-bar
 </summary>
 
 ```
-keepers: null
-length: 2
-prefix: null
-separator: "-"
+input: "foo"
+triggers_replace: null
 ```
 
 </details>

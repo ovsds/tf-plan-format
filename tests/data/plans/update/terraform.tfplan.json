@@ -5,14 +5,14 @@
     "root_module": {
       "resources": [
         {
-          "address": "terraform_data.replacement",
+          "address": "terraform_data.foo-bar",
           "mode": "managed",
           "type": "terraform_data",
-          "name": "replacement",
+          "name": "foo-bar",
           "provider_name": "terraform.io/builtin/terraform",
           "schema_version": 0,
           "values": {
-            "id": "ca96dcb2-eeb0-1bd0-fd8c-9bb71f3d0e08",
+            "id": "72285066-beaf-bd58-0c9f-0c5e7ae166a2",
             "input": "bar",
             "triggers_replace": null
           },
@@ -23,21 +23,21 @@
   },
   "resource_changes": [
     {
-      "address": "terraform_data.replacement",
+      "address": "terraform_data.foo-bar",
       "mode": "managed",
       "type": "terraform_data",
-      "name": "replacement",
+      "name": "foo-bar",
       "provider_name": "terraform.io/builtin/terraform",
       "change": {
         "actions": ["update"],
         "before": {
-          "id": "ca96dcb2-eeb0-1bd0-fd8c-9bb71f3d0e08",
+          "id": "72285066-beaf-bd58-0c9f-0c5e7ae166a2",
           "input": "foo",
           "output": "foo",
           "triggers_replace": null
         },
         "after": {
-          "id": "ca96dcb2-eeb0-1bd0-fd8c-9bb71f3d0e08",
+          "id": "72285066-beaf-bd58-0c9f-0c5e7ae166a2",
           "input": "bar",
           "triggers_replace": null
         },
@@ -56,14 +56,14 @@
       "root_module": {
         "resources": [
           {
-            "address": "terraform_data.replacement",
+            "address": "terraform_data.foo-bar",
             "mode": "managed",
             "type": "terraform_data",
-            "name": "replacement",
+            "name": "foo-bar",
             "provider_name": "terraform.io/builtin/terraform",
             "schema_version": 0,
             "values": {
-              "id": "ca96dcb2-eeb0-1bd0-fd8c-9bb71f3d0e08",
+              "id": "72285066-beaf-bd58-0c9f-0c5e7ae166a2",
               "input": "foo",
               "output": "foo",
               "triggers_replace": null
@@ -76,11 +76,6 @@
   },
   "configuration": {
     "provider_config": {
-      "local": {
-        "name": "local",
-        "full_name": "registry.terraform.io/hashicorp/local",
-        "version_constraint": "2.5.2"
-      },
       "terraform": {
         "name": "terraform",
         "full_name": "terraform.io/builtin/terraform"
@@ -89,10 +84,10 @@
     "root_module": {
       "resources": [
         {
-          "address": "terraform_data.replacement",
+          "address": "terraform_data.foo-bar",
           "mode": "managed",
           "type": "terraform_data",
-          "name": "replacement",
+          "name": "foo-bar",
           "provider_config_key": "terraform",
           "expressions": {
             "input": {
@@ -104,6 +99,6 @@
       ]
     }
   },
-  "timestamp": "2024-10-24T20:26:15Z",
+  "timestamp": "2024-10-25T22:14:16Z",
   "errored": false
 }
