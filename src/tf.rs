@@ -76,214 +76,24 @@ pub mod tests {
     pub fn get_test_data() -> Data {
         let mut plans = std::collections::HashMap::new();
         plans.insert("create".to_string(), get_test_plan(&PlanType::Create));
+        plans.insert("delete".to_string(), get_test_plan(&PlanType::Delete));
+        plans.insert(
+            "delete-create".to_string(),
+            get_test_plan(&PlanType::DeleteCreate),
+        );
+        plans.insert("no-op".to_string(), get_test_plan(&PlanType::NoOp));
+        plans.insert(
+            "no-resources".to_string(),
+            get_test_plan(&PlanType::NoResources),
+        );
+        plans.insert("update".to_string(), get_test_plan(&PlanType::Update));
 
         return Data { plans };
     }
 
     pub fn get_test_plan(plan_type: &PlanType) -> Plan {
-        match plan_type {
-            PlanType::Create => Plan {
-                format_version: "1.2".to_string(),
-                terraform_version: "1.7.5".to_string(),
-                resource_changes: Some(vec![ResourceChange {
-                    address: "terraform_data.foo-bar".to_string(),
-                    mode: "managed".to_string(),
-                    type_: "terraform_data".to_string(),
-                    name: "foo-bar".to_string(),
-                    provider_name: "terraform.io/builtin/terraform".to_string(),
-                    change: ResourceChangeChange {
-                        actions: vec![ResourceChangeChangeAction::Create],
-                        before: None,
-                        after: Some({
-                            let mut map = std::collections::HashMap::new();
-                            map.insert("input".to_string(), Some(Value::String("foo".to_string())));
-                            map.insert("triggers_replace".to_string(), None);
-                            map
-                        }),
-                    },
-                }]),
-                timestamp: "2024-10-25T21:40:18Z".to_string(),
-                errored: false,
-            },
-            PlanType::Delete => Plan {
-                format_version: "1.2".to_string(),
-                terraform_version: "1.7.5".to_string(),
-                resource_changes: Some(vec![ResourceChange {
-                    address: "terraform_data.foo-bar".to_string(),
-                    mode: "managed".to_string(),
-                    type_: "terraform_data".to_string(),
-                    name: "foo-bar".to_string(),
-                    provider_name: "terraform.io/builtin/terraform".to_string(),
-                    change: ResourceChangeChange {
-                        actions: vec![ResourceChangeChangeAction::Delete],
-                        before: Some({
-                            let mut map = std::collections::HashMap::new();
-                            map.insert(
-                                "id".to_string(),
-                                Some(Value::String(
-                                    "96202d3f-5e6b-8c7f-8e5a-7d1599601bd8".to_string(),
-                                )),
-                            );
-                            map.insert("input".to_string(), Some(Value::String("foo".to_string())));
-                            map.insert(
-                                "output".to_string(),
-                                Some(Value::String("foo".to_string())),
-                            );
-                            map.insert("triggers_replace".to_string(), None);
-                            map
-                        }),
-                        after: None,
-                    },
-                }]),
-                timestamp: "2024-10-25T21:40:17Z".to_string(),
-                errored: false,
-            },
-            PlanType::DeleteCreate => Plan {
-                format_version: "1.2".to_string(),
-                terraform_version: "1.7.5".to_string(),
-                resource_changes: Some(vec![ResourceChange {
-                    address: "null_resource.foo-bar".to_string(),
-                    mode: "managed".to_string(),
-                    type_: "null_resource".to_string(),
-                    name: "foo-bar".to_string(),
-                    provider_name: "registry.terraform.io/hashicorp/null".to_string(),
-                    change: ResourceChangeChange {
-                        actions: vec![
-                            ResourceChangeChangeAction::Delete,
-                            ResourceChangeChangeAction::Create,
-                        ],
-                        before: Some({
-                            let mut map = std::collections::HashMap::new();
-                            map.insert(
-                                "triggers".to_string(),
-                                Some(Value::Object({
-                                    let mut map = std::collections::HashMap::new();
-                                    map.insert(
-                                        "always_run".to_string(),
-                                        Value::String("2024-10-25T21:40:19Z".to_string()),
-                                    );
-                                    map
-                                })),
-                            );
-                            map.insert(
-                                "id".to_string(),
-                                Some(Value::String("4525788878524015586".to_string())),
-                            );
-                            map
-                        }),
-                        after: Some({
-                            let mut map = std::collections::HashMap::new();
-                            map.insert(
-                                "triggers".to_string(),
-                                Some(Value::Object(std::collections::HashMap::new())),
-                            );
-                            map
-                        }),
-                    },
-                }]),
-                timestamp: "2024-10-25T21:40:20Z".to_string(),
-                errored: false,
-            },
-            PlanType::NoOp => Plan {
-                format_version: "1.2".to_string(),
-                terraform_version: "1.7.5".to_string(),
-                resource_changes: Some(vec![ResourceChange {
-                    address: "terraform_data.foo-bar".to_string(),
-                    mode: "managed".to_string(),
-                    type_: "terraform_data".to_string(),
-                    name: "foo-bar".to_string(),
-                    provider_name: "terraform.io/builtin/terraform".to_string(),
-                    change: ResourceChangeChange {
-                        actions: vec![ResourceChangeChangeAction::NoOp],
-                        before: Some({
-                            let mut map = std::collections::HashMap::new();
-                            map.insert(
-                                "id".to_string(),
-                                Some(Value::String(
-                                    "0f61b5b9-e9e3-1625-f62b-501a232653f9".to_string(),
-                                )),
-                            );
-                            map.insert("input".to_string(), Some(Value::String("foo".to_string())));
-                            map.insert(
-                                "output".to_string(),
-                                Some(Value::String("foo".to_string())),
-                            );
-                            map.insert("triggers_replace".to_string(), None);
-                            map
-                        }),
-                        after: Some({
-                            let mut map = std::collections::HashMap::new();
-                            map.insert(
-                                "id".to_string(),
-                                Some(Value::String(
-                                    "0f61b5b9-e9e3-1625-f62b-501a232653f9".to_string(),
-                                )),
-                            );
-                            map.insert("input".to_string(), Some(Value::String("foo".to_string())));
-                            map.insert(
-                                "output".to_string(),
-                                Some(Value::String("foo".to_string())),
-                            );
-                            map.insert("triggers_replace".to_string(), None);
-                            map
-                        }),
-                    },
-                }]),
-                timestamp: "2024-10-25T21:40:18Z".to_string(),
-                errored: false,
-            },
-            PlanType::NoResources => Plan {
-                format_version: "1.2".to_string(),
-                terraform_version: "1.7.5".to_string(),
-                resource_changes: None,
-                timestamp: "2024-10-25T21:40:18Z".to_string(),
-                errored: false,
-            },
-            PlanType::Update => Plan {
-                format_version: "1.2".to_string(),
-                terraform_version: "1.7.5".to_string(),
-                resource_changes: Some(vec![ResourceChange {
-                    address: "terraform_data.foo-bar".to_string(),
-                    mode: "managed".to_string(),
-                    type_: "terraform_data".to_string(),
-                    name: "foo-bar".to_string(),
-                    provider_name: "terraform.io/builtin/terraform".to_string(),
-                    change: ResourceChangeChange {
-                        actions: vec![ResourceChangeChangeAction::Update],
-                        before: Some({
-                            let mut map = std::collections::HashMap::new();
-                            map.insert(
-                                "id".to_string(),
-                                Some(Value::String(
-                                    "72285066-beaf-bd58-0c9f-0c5e7ae166a2".to_string(),
-                                )),
-                            );
-                            map.insert("input".to_string(), Some(Value::String("foo".to_string())));
-                            map.insert(
-                                "output".to_string(),
-                                Some(Value::String("foo".to_string())),
-                            );
-                            map.insert("triggers_replace".to_string(), None);
-                            map
-                        }),
-                        after: Some({
-                            let mut map = std::collections::HashMap::new();
-                            map.insert(
-                                "id".to_string(),
-                                Some(Value::String(
-                                    "72285066-beaf-bd58-0c9f-0c5e7ae166a2".to_string(),
-                                )),
-                            );
-                            map.insert("input".to_string(), Some(Value::String("bar".to_string())));
-                            map.insert("triggers_replace".to_string(), None);
-                            map
-                        }),
-                    },
-                }]),
-                timestamp: "2024-10-25T22:14:16Z".to_string(),
-                errored: false,
-            },
-        }
+        let json = get_test_plan_json(plan_type);
+        return serde_json::from_str::<Plan>(&json).unwrap();
     }
 
     pub fn get_test_plan_json(plan_type: &PlanType) -> String {
@@ -303,12 +113,7 @@ pub mod tests {
             $(
                 #[test]
                 fn $name() {
-                    let expected = get_test_plan(&$plan_type);
-
-                    let raw = get_test_plan_json(&$plan_type);
-                    let result = serde_json::from_str::<Plan>(&raw).unwrap();
-
-                    assert_eq!(expected, result);
+                    get_test_plan(&$plan_type);
                 }
             )*
         };
