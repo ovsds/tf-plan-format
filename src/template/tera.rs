@@ -2,33 +2,34 @@ use crate::tf;
 use core::str;
 
 pub const GITHUB_MARKDOWN_TEMPLATE: &str = "
-{%- for plan_key, plan in data.plans -%}
-<details>
+{%- for plan_key, plan in data.plans %}<details>
 <summary>{{ plan_key }}</summary>
+{%- if plan.resource_changes %}
 {%- for resource_change in plan.resource_changes %}
 <details>
 <summary>
-{%- for action in resource_change.change.actions %}
-{%- if action == 'create' %}✅
-{%- elif action == 'delete' %}❌
-{%- elif action == 'update' %}🔄
-{%- elif action == 'read' %}📖
-{%- elif action == 'noop' %}🤷
+{%- if resource_change.change.actions is containing('create') and resource_change.change.actions is containing('delete') %}♻️
+{%- elif resource_change.change.actions is containing('create') %}✅
+{%- elif resource_change.change.actions is containing('delete') %}❌
+{%- elif resource_change.change.actions is containing('update') %}🔄
+{%- elif resource_change.change.actions is containing('no-op') %}🟰
+{%- elif resource_change.change.actions is containing('read') %}🔍
 {%- else %}❓
-{%- endif %}
-{%- endfor -%}
+{%- endif -%}
 {{ resource_change.address }}
 </summary>
 
 ```
 {{ render_changes(before=resource_change.change.before, after=resource_change.change.after) -}}
- ```
+```
 
 </details>
 {%- endfor %}
+{%- else %}
+No resource changes
+{%- endif %}
 </details>
-{%- endfor %}
-";
+{% endfor %}";
 
 #[derive(Debug)]
 pub struct RenderError {
@@ -243,7 +244,7 @@ mod tests {
         let data = tf::tests::get_test_data();
         let result = render(&data, GITHUB_MARKDOWN_TEMPLATE).unwrap();
 
-        let expected = utils::test::get_test_data_file_contents("renders/tera/github_markdown");
+        let expected = utils::test::get_test_data_file_contents("renders/tera/github_markdown.md");
         assert_eq!(expected, result);
     }
 
