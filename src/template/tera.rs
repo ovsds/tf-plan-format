@@ -244,7 +244,7 @@ mod tests {
         let data = tf::tests::get_test_data();
         let result = render(&data, GITHUB_MARKDOWN_TEMPLATE).unwrap();
 
-        let expected = utils::test::get_test_data_file_contents("renders/tera/github_markdown");
+        let expected = utils::test::get_test_data_file_contents("renders/tera/github_markdown.md");
         assert_eq!(expected, result);
     }
 
