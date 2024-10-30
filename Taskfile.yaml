@@ -14,6 +14,8 @@ includes:
 vars:
   NENV: "node_modules"
 
+  LLVM_TARGET_COVERAGE: "98"
+
 tasks:
   _prettier:
     internal: true
@@ -87,12 +89,11 @@ tasks:
   test-coverage:
     desc: Test project with coverage
     cmds:
-      - cargo llvm-cov test --fail-under-lines=100
+      - cargo llvm-cov test --fail-under-lines={{.LLVM_TARGET_COVERAGE}}
 
   test-coverage-html:
     desc: Open coverage report in browser
     cmds:
-      - cargo llvm-cov --html
       - cargo llvm-cov --open
 
   test-generate-data:

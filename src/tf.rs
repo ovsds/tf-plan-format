@@ -1,4 +1,5 @@
 use serde::{Deserialize, Serialize};
+use std::str::FromStr;
 
 #[derive(Serialize, Deserialize, Debug, PartialEq)]
 #[serde(untagged)]
@@ -54,9 +55,51 @@ pub struct Plan {
     errored: bool,
 }
 
+#[derive(Debug)]
+pub struct Error {
+    pub message: String,
+}
+
+impl FromStr for Plan {
+    type Err = Error;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match serde_json::from_str::<Plan>(s) {
+            Ok(plan) => Ok(plan),
+            Err(e) => Err(Error {
+                message: format!("Failed to parse plan. {e}"),
+            }),
+        }
+    }
+}
+
+impl Plan {
+    /// # Errors
+    /// Returns an error if the file cannot be read or parsed
+    pub fn from_file(path: &str) -> Result<Self, Error> {
+        let raw_file = std::fs::read_to_string(path).map_err(|e| Error {
+            message: format!("Failed to read file({path}). {e}"),
+        })?;
+        Plan::from_str(&raw_file)
+    }
+}
+
 #[derive(Serialize, Debug, PartialEq)]
 pub struct Data {
     pub plans: std::collections::HashMap<String, Plan>,
+}
+
+impl Data {
+    /// # Errors
+    /// Returns an error if any of the files cannot be read or parsed
+    pub fn from_files(paths: &[String]) -> Result<Self, Error> {
+        let mut plans = std::collections::HashMap::new();
+        for path in paths {
+            let plan = Plan::from_file(path)?;
+            plans.insert(path.to_string(), plan);
+        }
+        Ok(Data { plans })
+    }
 }
 
 #[cfg(test)]
@@ -75,37 +118,43 @@ pub mod tests {
 
     pub fn get_test_data() -> Data {
         let mut plans = std::collections::HashMap::new();
-        plans.insert("create".to_string(), get_test_plan(&PlanType::Create));
-        plans.insert("delete".to_string(), get_test_plan(&PlanType::Delete));
-        plans.insert(
-            "delete-create".to_string(),
-            get_test_plan(&PlanType::DeleteCreate),
-        );
-        plans.insert("no-op".to_string(), get_test_plan(&PlanType::NoOp));
-        plans.insert(
-            "no-resources".to_string(),
-            get_test_plan(&PlanType::NoResources),
-        );
-        plans.insert("update".to_string(), get_test_plan(&PlanType::Update));
+
+        for plan_type in &[
+            PlanType::Create,
+            PlanType::Delete,
+            PlanType::DeleteCreate,
+            PlanType::NoOp,
+            PlanType::NoResources,
+            PlanType::Update,
+        ] {
+            plans.insert(get_test_plan_file(plan_type), get_test_plan(plan_type));
+        }
 
         return Data { plans };
     }
 
+    pub fn get_test_plan_file(plan_type: &PlanType) -> String {
+        let folder = match plan_type {
+            PlanType::Create => "create",
+            PlanType::Delete => "delete",
+            PlanType::DeleteCreate => "delete-create",
+            PlanType::NoOp => "no-op",
+            PlanType::NoResources => "no-resources",
+            PlanType::Update => "update",
+        };
+        return utils::test::get_test_data_file_path(&format!(
+            "plans/{folder}/terraform.tfplan.json"
+        ));
+    }
+
     pub fn get_test_plan(plan_type: &PlanType) -> Plan {
         let json = get_test_plan_json(plan_type);
-        return serde_json::from_str::<Plan>(&json).unwrap();
+        return Plan::from_str(&json).unwrap();
     }
 
     pub fn get_test_plan_json(plan_type: &PlanType) -> String {
-        let path = match plan_type {
-            PlanType::Create => "plans/create/terraform.tfplan.json",
-            PlanType::Delete => "plans/delete/terraform.tfplan.json",
-            PlanType::DeleteCreate => "plans/delete-create/terraform.tfplan.json",
-            PlanType::NoOp => "plans/no-op/terraform.tfplan.json",
-            PlanType::NoResources => "plans/no-resources/terraform.tfplan.json",
-            PlanType::Update => "plans/update/terraform.tfplan.json",
-        };
-        return utils::test::get_test_data_file_contents(path);
+        let file = get_test_plan_file(plan_type);
+        return std::fs::read_to_string(file).unwrap();
     }
 
     macro_rules! deserialize_tests {
@@ -126,5 +175,23 @@ pub mod tests {
         deserialize_no_op_plan, PlanType::NoOp
         deserialize_no_resources_plan, PlanType::NoResources
         deserialize_update_plan, PlanType::Update
+    }
+
+    #[test]
+    fn plan_from_str_error() {
+        let plan = Plan::from_str("invalid json");
+        assert!(plan.is_err());
+    }
+
+    #[test]
+    fn plan_from_file_error() {
+        let plan = Plan::from_file("invalid path");
+        assert!(plan.is_err());
+    }
+
+    #[test]
+    fn data_from_files_error() {
+        let data = Data::from_files(&["invalid path".to_string()]);
+        assert!(data.is_err());
     }
 }
