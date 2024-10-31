@@ -23,6 +23,10 @@ pub enum Commands {
         #[clap(short, long)]
         template: String,
     },
+    Github {
+        #[clap(short, long, num_args = 1..)]
+        file: Vec<String>,
+    },
 }
 
 /// # Errors
@@ -39,14 +43,11 @@ pub fn root(
             file,
             template,
         }) => custom(engine, template, file, stdout),
+        Some(Commands::Github { file }) => github(file, stdout),
         None => none(stdout, stderr),
     }
 }
 
-/// # Errors
-/// Returns an error if the engine is invalid
-/// Returns an error if the file cannot be read
-/// Returns an error if the plan cannot be parsed
 fn custom(
     engine: &str,
     template: &str,
@@ -68,6 +69,26 @@ fn custom(
             message: format!("Failed to render template. {}", e.message),
             exit_code: exitcode::USAGE,
         })?;
+
+    writeln!(stdout, "{result}").unwrap();
+
+    Ok(())
+}
+
+fn github(
+    files: &[String],
+    mut stdout: impl std::io::Write,
+) -> Result<(), utils::cli::CommandError> {
+    let engine = template::Engine::Tera;
+    let template = template::tera::GITHUB_MARKDOWN_TEMPLATE;
+
+    let data = tf::Data::from_files(files).map_err(|e| utils::cli::CommandError {
+        message: format!("Failed to parse plan. {}", e.message),
+        exit_code: exitcode::USAGE,
+    })?;
+
+    // Should never fail as the template is hardcoded
+    let result = template::render(&engine, &data, template).unwrap();
 
     writeln!(stdout, "{result}").unwrap();
 
