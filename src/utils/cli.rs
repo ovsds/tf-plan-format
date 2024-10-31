@@ -1,4 +1,4 @@
 pub struct CommandError {
-    pub message: &'static str,
+    pub message: String,
     pub exit_code: i32,
 }

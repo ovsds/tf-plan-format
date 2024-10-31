@@ -1,5 +1,5 @@
 <details>
-<summary>create</summary>
+<summary>tests/data/plans/create/terraform.tfplan.json</summary>
 <details>
 <summary>✅terraform_data.foo-bar
 </summary>
@@ -12,7 +12,20 @@ triggers_replace: null
 </details>
 </details>
 <details>
-<summary>delete</summary>
+<summary>tests/data/plans/delete-create/terraform.tfplan.json</summary>
+<details>
+<summary>♻️null_resource.foo-bar
+</summary>
+
+```
+id: "4525788878524015586" -> null
+triggers: {"always_run":"2024-10-25T21:40:19Z"} -> {}
+```
+
+</details>
+</details>
+<details>
+<summary>tests/data/plans/delete/terraform.tfplan.json</summary>
 <details>
 <summary>❌terraform_data.foo-bar
 </summary>
@@ -27,20 +40,7 @@ triggers_replace: null
 </details>
 </details>
 <details>
-<summary>delete-create</summary>
-<details>
-<summary>♻️null_resource.foo-bar
-</summary>
-
-```
-id: "4525788878524015586" -> null
-triggers: {"always_run":"2024-10-25T21:40:19Z"} -> {}
-```
-
-</details>
-</details>
-<details>
-<summary>no-op</summary>
+<summary>tests/data/plans/no-op/terraform.tfplan.json</summary>
 <details>
 <summary>🟰terraform_data.foo-bar
 </summary>
@@ -55,11 +55,11 @@ triggers_replace: null
 </details>
 </details>
 <details>
-<summary>no-resources</summary>
+<summary>tests/data/plans/no-resources/terraform.tfplan.json</summary>
 No resource changes
 </details>
 <details>
-<summary>update</summary>
+<summary>tests/data/plans/update/terraform.tfplan.json</summary>
 <details>
 <summary>🔄terraform_data.foo-bar
 </summary>

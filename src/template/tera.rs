@@ -1,3 +1,4 @@
+use crate::template;
 use crate::tf;
 use core::str;
 
@@ -30,11 +31,6 @@ No resource changes
 {%- endif %}
 </details>
 {% endfor %}";
-
-#[derive(Debug)]
-pub struct RenderError {
-    pub message: String,
-}
 
 fn render_changes(
     args: &std::collections::HashMap<String, tera::Value>,
@@ -69,33 +65,32 @@ fn render_changes(
             for (key, value) in result {
                 result_str.push_str(&format!("{key}: {value}\n"));
             }
-
-            return Ok(tera::Value::String(result_str));
+            Ok(tera::Value::String(result_str))
         }
         (Some(tera::Value::Object(before)), Some(tera::Value::Null)) => {
             let mut result = String::new();
             for (key, value) in before {
                 result.push_str(&format!("{key}: {value}\n"));
             }
-            return Ok(tera::Value::String(result));
+            Ok(tera::Value::String(result))
         }
         (Some(tera::Value::Null), Some(tera::Value::Object(after))) => {
             let mut result = String::new();
             for (key, value) in after {
                 result.push_str(&format!("{key}: {value}\n"));
             }
-            return Ok(tera::Value::String(result));
+            Ok(tera::Value::String(result))
         }
         (Some(tera::Value::Null), Some(tera::Value::Null)) => {
-            return Ok(tera::Value::String(String::new()));
+            Ok(tera::Value::String(String::new()))
         }
-        _ => return Err("before and after must be objects".into()),
+        _ => Err("before and after must be objects".into()),
     }
 }
 
 /// # Errors
 /// Returns an error if template is invalid or rendering fails
-pub fn render(data: &tf::Data, template: &str) -> Result<String, RenderError> {
+pub fn render(data: &tf::Data, template: &str) -> Result<String, template::Error> {
     let mut tera = tera::Tera::default();
     tera.register_function("render_changes", render_changes);
 
@@ -103,8 +98,8 @@ pub fn render(data: &tf::Data, template: &str) -> Result<String, RenderError> {
     match tera.add_raw_template(template_name, template) {
         Ok(()) => {}
         Err(e) => {
-            return Err(RenderError {
-                message: format!("Failed to add template: {e}"),
+            return Err(template::Error {
+                message: format!("Failed to add template({template}). {e}"),
             });
         }
     }
@@ -113,160 +108,156 @@ pub fn render(data: &tf::Data, template: &str) -> Result<String, RenderError> {
     context.insert("data", &data);
 
     match tera.render(template_name, &context) {
-        Ok(result) => return Ok(result),
-        Err(e) => {
-            return Err(RenderError {
-                message: format!("Failed to render template: {e}"),
-            })
-        }
+        Ok(result) => Ok(result),
+        Err(e) => Err(template::Error {
+            message: format!("Failed to render template({template}). {e}"),
+        }),
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::utils;
 
-    #[test]
-    fn test_render_changes_default() {
-        let mut before = tera::Map::new();
-        before.insert("key".to_string(), tera::Value::Number(42.into()));
-        let mut after = tera::Map::new();
-        after.insert("key".to_string(), tera::Value::Number(43.into()));
+    mod render_changes {
+        use super::*;
 
-        let mut args = std::collections::HashMap::new();
-        args.insert("before".to_string(), tera::Value::Object(before));
-        args.insert("after".to_string(), tera::Value::Object(after));
+        #[test]
+        fn default() {
+            let mut before = tera::Map::new();
+            before.insert("key".to_string(), tera::Value::Number(42.into()));
+            let mut after = tera::Map::new();
+            after.insert("key".to_string(), tera::Value::Number(43.into()));
 
-        let result = render_changes(&args).unwrap();
-        assert_eq!(tera::Value::String("key: 42 -> 43\n".to_string()), result);
+            let mut args = std::collections::HashMap::new();
+            args.insert("before".to_string(), tera::Value::Object(before));
+            args.insert("after".to_string(), tera::Value::Object(after));
+
+            let result = render_changes(&args).unwrap();
+            assert_eq!(tera::Value::String("key: 42 -> 43\n".to_string()), result);
+        }
+
+        #[test]
+        fn no_changes() {
+            let mut before = tera::Map::new();
+            before.insert("key".to_string(), tera::Value::Number(42.into()));
+            let mut after = tera::Map::new();
+            after.insert("key".to_string(), tera::Value::Number(42.into()));
+
+            let mut args = std::collections::HashMap::new();
+            args.insert("before".to_string(), tera::Value::Object(before));
+            args.insert("after".to_string(), tera::Value::Object(after));
+
+            let result = render_changes(&args).unwrap();
+            assert_eq!(tera::Value::String("key: 42\n".to_string()), result);
+        }
+
+        #[test]
+        fn no_before_key() {
+            let before = tera::Map::new();
+            let mut after = tera::Map::new();
+            after.insert("key".to_string(), tera::Value::Number(42.into()));
+
+            let mut args = std::collections::HashMap::new();
+            args.insert("before".to_string(), tera::Value::Object(before));
+            args.insert("after".to_string(), tera::Value::Object(after));
+
+            let result = render_changes(&args).unwrap();
+            assert_eq!(tera::Value::String("key: null -> 42\n".to_string()), result);
+        }
+
+        #[test]
+        fn no_after_key() {
+            let mut before = tera::Map::new();
+            before.insert("key".to_string(), tera::Value::Number(42.into()));
+            let after = tera::Map::new();
+
+            let mut args = std::collections::HashMap::new();
+            args.insert("before".to_string(), tera::Value::Object(before));
+            args.insert("after".to_string(), tera::Value::Object(after));
+
+            let result = render_changes(&args).unwrap();
+            assert_eq!(tera::Value::String("key: 42 -> null\n".to_string()), result);
+        }
+
+        #[test]
+        fn null_before() {
+            let mut after = tera::Map::new();
+            after.insert("key".to_string(), tera::Value::Number(42.into()));
+
+            let mut args = std::collections::HashMap::new();
+            args.insert("before".to_string(), tera::Value::Null);
+            args.insert("after".to_string(), tera::Value::Object(after));
+
+            let result = render_changes(&args).unwrap();
+            assert_eq!(tera::Value::String("key: 42\n".to_string()), result);
+        }
+
+        #[test]
+        fn null_after() {
+            let mut before = tera::Map::new();
+            before.insert("key".to_string(), tera::Value::Number(42.into()));
+
+            let mut args = std::collections::HashMap::new();
+            args.insert("before".to_string(), tera::Value::Object(before));
+            args.insert("after".to_string(), tera::Value::Null);
+
+            let result = render_changes(&args).unwrap();
+            assert_eq!(tera::Value::String("key: 42\n".to_string()), result);
+        }
+
+        #[test]
+        fn null_before_after() {
+            let mut args = std::collections::HashMap::new();
+            args.insert("before".to_string(), tera::Value::Null);
+            args.insert("after".to_string(), tera::Value::Null);
+
+            let result = render_changes(&args).unwrap();
+            assert_eq!(tera::Value::String(String::new()), result);
+        }
+
+        #[test]
+        fn no_before_raises() {
+            let mut args = std::collections::HashMap::new();
+            args.insert("after".to_string(), tera::Value::Object(tera::Map::new()));
+
+            let result = render_changes(&args);
+            assert!(result.is_err());
+        }
+
+        #[test]
+        fn no_after_raises() {
+            let mut args = std::collections::HashMap::new();
+            args.insert("before".to_string(), tera::Value::Object(tera::Map::new()));
+
+            let result = render_changes(&args);
+            assert!(result.is_err());
+        }
     }
 
-    #[test]
-    fn test_render_changes_no_changes() {
-        let mut before = tera::Map::new();
-        before.insert("key".to_string(), tera::Value::Number(42.into()));
-        let mut after = tera::Map::new();
-        after.insert("key".to_string(), tera::Value::Number(42.into()));
+    mod render {
+        use super::*;
+        use crate::utils;
 
-        let mut args = std::collections::HashMap::new();
-        args.insert("before".to_string(), tera::Value::Object(before));
-        args.insert("after".to_string(), tera::Value::Object(after));
+        #[test]
+        fn default() {
+            let data = tf::tests::get_test_data();
+            let result = render(&data, GITHUB_MARKDOWN_TEMPLATE).unwrap();
 
-        let result = render_changes(&args).unwrap();
-        assert_eq!(tera::Value::String("key: 42\n".to_string()), result);
-    }
+            let expected =
+                utils::test::get_test_data_file_contents("renders/tera/github_markdown.md");
+            assert_eq!(expected, result);
+        }
 
-    #[test]
-    fn test_render_changes_no_before_key() {
-        let before = tera::Map::new();
-        let mut after = tera::Map::new();
-        after.insert("key".to_string(), tera::Value::Number(42.into()));
+        #[test]
+        fn invalid_render() {
+            let data = tf::tests::get_test_data();
+            let result = render(&data, "{{ incorrect_data }}").unwrap_err();
 
-        let mut args = std::collections::HashMap::new();
-        args.insert("before".to_string(), tera::Value::Object(before));
-        args.insert("after".to_string(), tera::Value::Object(after));
-
-        let result = render_changes(&args).unwrap();
-        assert_eq!(tera::Value::String("key: null -> 42\n".to_string()), result);
-    }
-
-    #[test]
-    fn test_render_changes_no_after_key() {
-        let mut before = tera::Map::new();
-        before.insert("key".to_string(), tera::Value::Number(42.into()));
-        let after = tera::Map::new();
-
-        let mut args = std::collections::HashMap::new();
-        args.insert("before".to_string(), tera::Value::Object(before));
-        args.insert("after".to_string(), tera::Value::Object(after));
-
-        let result = render_changes(&args).unwrap();
-        assert_eq!(tera::Value::String("key: 42 -> null\n".to_string()), result);
-    }
-
-    #[test]
-    fn test_render_changes_null_before() {
-        let mut after = tera::Map::new();
-        after.insert("key".to_string(), tera::Value::Number(42.into()));
-
-        let mut args = std::collections::HashMap::new();
-        args.insert("before".to_string(), tera::Value::Null);
-        args.insert("after".to_string(), tera::Value::Object(after));
-
-        let result = render_changes(&args).unwrap();
-        assert_eq!(tera::Value::String("key: 42\n".to_string()), result);
-    }
-
-    #[test]
-    fn test_render_changes_null_after() {
-        let mut before = tera::Map::new();
-        before.insert("key".to_string(), tera::Value::Number(42.into()));
-
-        let mut args = std::collections::HashMap::new();
-        args.insert("before".to_string(), tera::Value::Object(before));
-        args.insert("after".to_string(), tera::Value::Null);
-
-        let result = render_changes(&args).unwrap();
-        assert_eq!(tera::Value::String("key: 42\n".to_string()), result);
-    }
-
-    #[test]
-    fn test_render_changes_null_before_after() {
-        let mut args = std::collections::HashMap::new();
-        args.insert("before".to_string(), tera::Value::Null);
-        args.insert("after".to_string(), tera::Value::Null);
-
-        let result = render_changes(&args).unwrap();
-        assert_eq!(tera::Value::String(String::new()), result);
-    }
-
-    #[test]
-    fn test_render_changes_no_before_raises() {
-        let mut args = std::collections::HashMap::new();
-        args.insert("after".to_string(), tera::Value::Object(tera::Map::new()));
-
-        let result = render_changes(&args);
-        assert!(result.is_err());
-    }
-
-    #[test]
-    fn test_render_changes_no_after_raises() {
-        let mut args = std::collections::HashMap::new();
-        args.insert("before".to_string(), tera::Value::Object(tera::Map::new()));
-
-        let result = render_changes(&args);
-        assert!(result.is_err());
-    }
-
-    #[test]
-    fn test_render() {
-        let data = tf::tests::get_test_data();
-        let result = render(&data, GITHUB_MARKDOWN_TEMPLATE).unwrap();
-
-        let expected = utils::test::get_test_data_file_contents("renders/tera/github_markdown.md");
-        assert_eq!(expected, result);
-    }
-
-    #[test]
-    fn test_render_invalid_template() {
-        let data = tf::tests::get_test_data();
-        let result = render(&data, "{{invalid template").unwrap_err();
-
-        assert_eq!(
-            result.message,
-            "Failed to add template: Failed to parse 'template'"
-        );
-    }
-
-    #[test]
-    fn test_render_invalid_render() {
-        let data = tf::tests::get_test_data();
-        let result = render(&data, "{{ incorrect_data }}").unwrap_err();
-
-        assert_eq!(
-            result.message,
-            "Failed to render template: Failed to render 'template'"
-        );
+            assert_eq!(
+                result.message,
+                "Failed to render template({{ incorrect_data }}). Failed to render 'template'"
+            );
+        }
     }
 }

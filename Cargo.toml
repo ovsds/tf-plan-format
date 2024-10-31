@@ -19,8 +19,6 @@ tera = "1.20.0"
 assert_cmd = "2.0.14"
 
 [lints.clippy]
-implicit_return = "deny"
-needless_return = "allow"
 pedantic = { level = "deny", priority = -1 }
 unnecessary-wraps = "allow"
 cargo = { level = "deny", priority = -1 }
