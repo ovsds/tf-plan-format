@@ -1,0 +1,32 @@
+version: 3
+
+tasks:
+  binaries:
+    dir: "{{.TASKFILE_DIR}}"
+    desc: Build project for all platforms
+    cmds:
+      - echo 'Building project for all platforms...'
+      - docker buildx bake cross-bin
+
+  image:
+    dir: "{{.TASKFILE_DIR}}"
+    desc: Build docker image
+    cmds:
+      - echo 'Building docker image...'
+      - docker buildx bake cross-image {{.CLI_ARGS}}
+    env:
+      IMAGE_TAG: '{{.IMAGE_TAG | default "tf-plan-format:test"}}'
+
+  clean:
+    desc: Clean build artifacts
+    cmds:
+      - echo 'Cleaning binaries...'
+      - rm -rf {{.TASKFILE_DIR}}/bin
+
+  configure-builder:
+    desc: Configure buildx for multi-arch builds
+    cmds:
+      - echo 'Configuring buildx...'
+      - docker buildx create
+        --driver docker-container
+        --use
