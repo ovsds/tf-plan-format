@@ -12,6 +12,8 @@ pub enum Value {
     Object(std::collections::HashMap<String, Value>),
 }
 
+pub type ValueMap = std::collections::HashMap<String, Option<Value>>;
+
 #[derive(Serialize, Deserialize, Debug, PartialEq)]
 #[serde(rename_all = "lowercase")]
 enum ResourceChangeChangeAction {
@@ -26,8 +28,8 @@ enum ResourceChangeChangeAction {
 #[derive(Serialize, Deserialize, Debug, PartialEq)]
 pub struct ResourceChangeChange {
     actions: Vec<ResourceChangeChangeAction>,
-    before: Option<std::collections::HashMap<String, Option<Value>>>,
-    after: Option<std::collections::HashMap<String, Option<Value>>>,
+    before: Option<ValueMap>,
+    after: Option<ValueMap>,
     // after_unknown
     // before_sensitive
     // after_sensitive
@@ -80,7 +82,10 @@ impl Plan {
         let raw_file = std::fs::read_to_string(path).map_err(|e| Error {
             message: format!("Failed to read file({path}). {e}"),
         })?;
-        Plan::from_str(&raw_file)
+        // add file path to error message
+        Plan::from_str(&raw_file).map_err(|e| Error {
+            message: format!("Failed to parse file({path}). {}", e.message),
+        })
     }
 }
 
@@ -178,20 +183,39 @@ pub mod tests {
     }
 
     #[test]
-    fn plan_from_str_error() {
+    fn plan_from_str_invalid_json() {
         let plan = Plan::from_str("invalid json");
-        assert!(plan.is_err());
+        assert_eq!(
+            plan.unwrap_err().message,
+            "Failed to parse plan. expected value at line 1 column 1"
+        );
     }
 
     #[test]
-    fn plan_from_file_error() {
+    fn plan_from_file_invalid_path() {
         let plan = Plan::from_file("invalid path");
-        assert!(plan.is_err());
+        assert_eq!(
+            plan.unwrap_err().message,
+            "Failed to read file(invalid path). No such file or directory (os error 2)"
+        );
     }
 
     #[test]
-    fn data_from_files_error() {
+    fn plan_from_file_invalid_json() {
+        let path = utils::test::get_test_data_file_path("plans/artificial/invalid.json");
+        let plan = Plan::from_file(&path);
+        assert_eq!(
+            plan.unwrap_err().message,
+            "Failed to parse file(tests/data/plans/artificial/invalid.json). Failed to parse plan. missing field `format_version` at line 3 column 1"
+        );
+    }
+
+    #[test]
+    fn data_from_files_invalid_path() {
         let data = Data::from_files(&["invalid path".to_string()]);
-        assert!(data.is_err());
+        assert_eq!(
+            data.unwrap_err().message,
+            "Failed to read file(invalid path). No such file or directory (os error 2)"
+        );
     }
 }
