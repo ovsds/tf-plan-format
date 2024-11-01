@@ -1,0 +1,6 @@
+{
+  "format_version": "test_format_version",
+  "terraform_version": "test_terraform_version",
+  "timestamp": "test_timestamp",
+  "errored": false
+}

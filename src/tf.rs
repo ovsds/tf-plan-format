@@ -8,8 +8,8 @@ pub enum Value {
     Integer(i64),
     Float(f64),
     Boolean(bool),
-    Array(Vec<Value>),
-    Object(std::collections::HashMap<String, Value>),
+    Array(Vec<Option<Value>>),
+    Object(std::collections::HashMap<String, Option<Value>>),
 }
 
 pub type ValueMap = std::collections::HashMap<String, Option<Value>>;
@@ -180,6 +180,19 @@ pub mod tests {
         deserialize_no_op_plan, PlanType::NoOp
         deserialize_no_resources_plan, PlanType::NoResources
         deserialize_update_plan, PlanType::Update
+    }
+
+    #[test]
+    fn plan_from_file_full() {
+        let path = utils::test::get_test_data_file_path("plans/artificial/full.json");
+        Plan::from_file(&path).unwrap();
+    }
+
+    #[test]
+    fn plan_from_file_no_resource_changes() {
+        let path =
+            utils::test::get_test_data_file_path("plans/artificial/no-resource-changes.json");
+        Plan::from_file(&path).unwrap();
     }
 
     #[test]

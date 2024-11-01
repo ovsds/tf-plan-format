@@ -1,0 +1,116 @@
+{
+  "format_version": "test_format_version",
+  "terraform_version": "test_terraform_version",
+  "resource_changes": [
+    {
+      "address": "test_address",
+      "mode": "test_mode",
+      "type": "test_type",
+      "name": "test_name",
+      "provider_name": "test_provider_name",
+      "change": {
+        "actions": ["create", "read", "update", "delete", "no-op"],
+        "before": {
+          "key_string": "test_value",
+          "key_integer": 1,
+          "key_float": 1.1,
+          "key_boolean": true,
+          "key_array": [
+            "test_value",
+            1,
+            1.1,
+            true,
+            ["test_value"],
+            {
+              "test_key": "test_value"
+            },
+            null
+          ],
+          "key_object": {
+            "key_string": "test_value",
+            "key_integer": 1,
+            "key_float": 1.1,
+            "key_boolean": true,
+            "key_array": ["test_value"],
+            "key_object": {
+              "test_key": "test_value"
+            },
+            "key_null": null
+          },
+          "key_null": null
+        },
+        "after": {
+          "key_string": "test_value",
+          "key_integer": 1,
+          "key_float": 1.1,
+          "key_boolean": true,
+          "key_array": [
+            "test_value",
+            1,
+            1.1,
+            true,
+            ["test_value"],
+            {
+              "test_key": "test_value"
+            },
+            null
+          ],
+          "key_object": {
+            "key_string": "test_value",
+            "key_integer": 1,
+            "key_float": 1.1,
+            "key_boolean": true,
+            "key_array": ["test_value"],
+            "key_object": {
+              "test_key": "test_value"
+            },
+            "key_null": null
+          },
+          "key_null": null
+        }
+      }
+    },
+    {
+      "address": "test_address",
+      "mode": "test_mode",
+      "type": "test_type",
+      "name": "test_name",
+      "provider_name": "test_provider_name",
+      "change": {
+        "actions": [],
+        "before": null,
+        "after": {
+          "test_key": "test_value"
+        }
+      }
+    },
+    {
+      "address": "test_address",
+      "mode": "test_mode",
+      "type": "test_type",
+      "name": "test_name",
+      "provider_name": "test_provider_name",
+      "change": {
+        "actions": [],
+        "before": {
+          "test_key": "test_value"
+        },
+        "after": null
+      }
+    },
+    {
+      "address": "test_address",
+      "mode": "test_mode",
+      "type": "test_type",
+      "name": "test_name",
+      "provider_name": "test_provider_name",
+      "change": {
+        "actions": [],
+        "before": null,
+        "after": null
+      }
+    }
+  ],
+  "timestamp": "test_timestamp",
+  "errored": false
+}
