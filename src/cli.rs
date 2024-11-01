@@ -14,17 +14,33 @@ pub struct Cli {
 
 #[derive(Subcommand, Clone)]
 pub enum Commands {
-    #[command(about = "Render a template with advanced options")]
+    #[command(about = "Render template with advanced options")]
     Custom {
-        #[clap(short, long, default_value = "tera")]
+        #[clap(
+            short,
+            long,
+            help = "Template engine to be used, possible options: [tera].",
+            default_value = "tera"
+        )]
         engine: String,
-        #[clap(short, long, num_args = 1..)]
+        #[clap(
+            short,
+            long,
+            help="File path or glob with terraform.tfplan.json, can be used multiple times.",
+            num_args = 1..,
+        )]
         file: Vec<String>,
-        #[clap(short, long)]
+        #[clap(short, long, help = "Template string")]
         template: String,
     },
+    #[command(about = "Render into Github markdown")]
     Github {
-        #[clap(short, long, num_args = 1..)]
+        #[clap(
+            short,
+            long,
+            help="File path or glob with terraform.tfplan.json, can be used multiple times.",
+            num_args = 1..
+        )]
         file: Vec<String>,
     },
 }

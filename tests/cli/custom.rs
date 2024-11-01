@@ -26,6 +26,30 @@ fn default() -> Result<(), Box<dyn std::error::Error>> {
 }
 
 #[test]
+fn glob() -> Result<(), Box<dyn std::error::Error>> {
+    let expected_result = utils::get_test_data_file_contents("renders/tera/github_markdown.md");
+
+    let mut cmd = Command::cargo_bin("tf_plan_format")?;
+    cmd.arg("custom");
+    cmd.arg("--engine").arg("tera");
+
+    cmd.arg("--file").arg(format!(
+        "{}/plans/*/terraform.tfplan.json",
+        utils::TEST_DATA_FOLDER_PATH
+    ));
+
+    let template = tf_plan_format::template::tera::GITHUB_MARKDOWN_TEMPLATE;
+    cmd.arg("--template").arg(template);
+
+    cmd.assert().success();
+    cmd.assert().stdout(expected_result + "\n");
+    cmd.assert().stderr("");
+    cmd.assert().code(0);
+
+    Ok(())
+}
+
+#[test]
 fn invalid_engine() -> Result<(), Box<dyn std::error::Error>> {
     let mut cmd = Command::cargo_bin("tf_plan_format")?;
     cmd.arg("custom");
@@ -59,7 +83,8 @@ fn invalid_files() -> Result<(), Box<dyn std::error::Error>> {
 
     cmd.assert().failure();
     cmd.assert().stdout("");
-    cmd.assert().stderr("Failed to parse plan. Failed to read file(invalid). No such file or directory (os error 2)\n");
+    cmd.assert()
+        .stderr("Failed to parse plan. Failed to read file(invalid). No files found.\n");
     cmd.assert().code(64);
 
     Ok(())

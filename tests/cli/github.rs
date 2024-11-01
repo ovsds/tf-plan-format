@@ -30,7 +30,8 @@ fn invalid_files() -> Result<(), Box<dyn std::error::Error>> {
 
     cmd.assert().failure();
     cmd.assert().stdout("");
-    cmd.assert().stderr("Failed to parse plan. Failed to read file(invalid). No such file or directory (os error 2)\n");
+    cmd.assert()
+        .stderr("Failed to parse plan. Failed to read file(invalid). No files found.\n");
     cmd.assert().code(64);
 
     Ok(())
