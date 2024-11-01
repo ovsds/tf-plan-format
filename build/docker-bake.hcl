@@ -1,3 +1,7 @@
+group "default" {
+  targets = ["bin", "image"]
+}
+
 target "base" {
   dockerfile = "Dockerfile"
   target = "base"
@@ -7,60 +11,58 @@ target "base" {
   }
 }
 
-target "bin" {
+target "bin-base" {
   inherits = ["base"]
   target = "bin"
-  output = ["type=local,dest=bin/local"]
+  output = ["type=local,dest=bin/base"]
 }
 
-target "cross-bin" {
-  inherits = ["bin"]
-  name = "bin-${item.os}-${item.arch}"
-  target = "cross_bin"
-  output = ["type=local,dest=bin/${item.os}-${item.arch}"]
+target "bin" {
+  inherits = ["bin-base"]
+  name = "bin-${item.name}"
+  output = ["type=local,dest=bin/${item.name}"]
+  args = {
+    RUST_TARGET = "${item.rust_target}",
+    RUST_LINKER = "${item.rust_linker}",
+  }
   matrix = {
     item = [
       {
-        os = "linux",
-        arch = "amd64",
+        name = "linux-amd64",
         rust_target="x86_64-unknown-linux-gnu",
         rust_linker="x86_64-linux-gnu-gcc",
       },
       {
-        os = "linux",
-        arch = "arm64",
+        name = "linux-arm64",
         rust_target="aarch64-unknown-linux-gnu",
         rust_linker="aarch64-linux-gnu-gcc",
       },
       {
-        os = "darwin",
-        arch = "amd64",
+        name = "darwin-amd64",
         rust_target="x86_64-apple-darwin",
         rust_linker="rust-lld",
       },
       {
-        os = "darwin",
-        arch = "arm64",
+        name = "darwin-arm64",
         rust_target="aarch64-apple-darwin",
         rust_linker="rust-lld",
       },
     ]
   }
-  args = {
-    RUST_TARGET = "${item.rust_target}",
-    RUST_LINKER = "${item.rust_linker}",
-  }
 }
 
 variable "IMAGE_TAG" {}
 
-target "cross-image" {
-  inherits = ["bin"]
-  target = "cross_image"
-  output = ["type=image"]
-  contexts = {
-    "binaries" = "./bin",
-  }
+target "image" {
+  inherits = ["base"]
+  target = "image"
+  output = ["type=registry"]
   tags = [IMAGE_TAG]
-  platforms = ["linux/amd64", "linux/arm64", "darwin/amd64", "darwin/arm64"]
+  platforms = ["linux/amd64", "linux/arm64"]
+}
+
+target "image-local" {
+  inherits = ["image"]
+  output = ["type=docker"]
+  platforms = []
 }

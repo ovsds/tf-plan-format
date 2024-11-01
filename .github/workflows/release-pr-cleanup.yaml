@@ -16,7 +16,7 @@ jobs:
     steps:
       - uses: ovsds/package-lifecycle-action@v1
         with:
-          package-name: ${{ github.event.repository.name }}/pr
+          package-name: ${{ github.event.repository.name }}-beta
           expire-period-days: 7
           retained-tagged-top: 1
           github-token: ${{ secrets.GITHUB_TOKEN }}
