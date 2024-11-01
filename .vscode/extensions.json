@@ -11,6 +11,7 @@
     "eamodio.gitlens",
     "hashicorp.terraform",
     "davidanson.vscode-markdownlint",
-    "rust-lang.rust-analyzer"
+    "rust-lang.rust-analyzer",
+    "hashicorp.hcl"
   ]
 }

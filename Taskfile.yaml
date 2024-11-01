@@ -11,6 +11,9 @@ includes:
     internal: true
     taskfile: tests/data/plans
 
+  build:
+    taskfile: build
+
 vars:
   NENV: "node_modules"
 
@@ -72,7 +75,7 @@ tasks:
     desc: Build project
     cmds:
       - echo 'Building project...'
-      - cargo build
+      - cargo build {{.CLI_ARGS}}
 
   run:
     desc: Run cargo

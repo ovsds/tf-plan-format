@@ -5,7 +5,7 @@ inputs:
   task-version:
     description: "Task version"
     required: true
-    default: "3.33.1"
+    default: "3.37.2"
 
 runs:
   using: "composite"

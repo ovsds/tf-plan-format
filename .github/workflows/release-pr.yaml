@@ -1,0 +1,59 @@
+name: Release PR
+
+on:
+  pull_request:
+    types:
+      - opened
+      - reopened
+      - synchronize
+
+jobs:
+  release-pr:
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: read
+      pull-requests: write
+      packages: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Environment
+        uses: ./.github/actions/setup_environment
+
+      - name: Build binaries
+        run: task build:binaries
+
+      - name: Release binaries
+        id: release-binaries
+        uses: actions/upload-artifact@v4
+        with:
+          name: binaries
+          path: build/bin
+
+      - name: Comment on PR
+        uses: ovsds/create-or-update-unique-comment-action@v1
+        with:
+          issue-number: ${{ github.event.number }}
+          body: |
+            Binaries for this PR are available for download:
+            [Download Binaries](${{ steps.release-binaries.outputs.artifact-url }})
+          unique-body-includes: |
+            Binaries for this PR are available for download:
+
+      - name: Configure Docker Builder
+        run: task build:configure-builder
+
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Release image
+        run: task build:image -- --push
+        env:
+          IMAGE_TAG: "ghcr.io/${{ github.repository_owner }}/${{ github.event.repository.name }}/pr:${{ github.event.number }}-${{ github.event.pull_request.head.sha }}"
