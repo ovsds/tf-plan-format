@@ -82,7 +82,6 @@ impl Plan {
         let raw_file = std::fs::read_to_string(path).map_err(|e| Error {
             message: format!("Failed to read file({path}). {e}"),
         })?;
-        // add file path to error message
         Plan::from_str(&raw_file).map_err(|e| Error {
             message: format!("Failed to parse file({path}). {}", e.message),
         })
@@ -99,9 +98,32 @@ impl Data {
     /// Returns an error if any of the files cannot be read or parsed
     pub fn from_files(paths: &[String]) -> Result<Self, Error> {
         let mut plans = std::collections::HashMap::new();
-        for path in paths {
-            let plan = Plan::from_file(path)?;
-            plans.insert(path.to_string(), plan);
+        for path_glob in paths {
+            let glob = glob::glob(path_glob).map_err(|e| Error {
+                message: format!("Failed to read file({path_glob}), invalid glob. {e}"),
+            })?;
+
+            let mut file_count = 0;
+            for path in glob {
+                let path_buf = path.map_err(|e| Error {
+                    message: format!("Failed to read file({path_glob}). {e}"),
+                })?;
+                let Some(path) = path_buf.to_str() else {
+                    return Err(Error {
+                        message: format!("Failed to read file({path_glob}), invalid path."),
+                    });
+                };
+                let plan = Plan::from_file(path)?;
+                plans.insert(path.to_string(), plan);
+
+                file_count += 1;
+            }
+
+            if file_count == 0 {
+                return Err(Error {
+                    message: format!("Failed to read file({path_glob}). No files found."),
+                });
+            }
         }
         Ok(Data { plans })
     }
@@ -121,18 +143,30 @@ pub mod tests {
         Update,
     }
 
-    pub fn get_test_data() -> Data {
-        let mut plans = std::collections::HashMap::new();
-
-        for plan_type in &[
+    fn get_test_data_plans() -> Vec<PlanType> {
+        return vec![
             PlanType::Create,
             PlanType::Delete,
             PlanType::DeleteCreate,
             PlanType::NoOp,
             PlanType::NoResources,
             PlanType::Update,
-        ] {
-            plans.insert(get_test_plan_file(plan_type), get_test_plan(plan_type));
+        ];
+    }
+
+    fn get_test_data_files() -> Vec<String> {
+        let mut files = Vec::new();
+        for plan_type in get_test_data_plans() {
+            files.push(get_test_plan_file(&plan_type));
+        }
+        return files;
+    }
+
+    pub fn get_test_data() -> Data {
+        let mut plans = std::collections::HashMap::new();
+
+        for plan_type in get_test_data_plans() {
+            plans.insert(get_test_plan_file(&plan_type), get_test_plan(&plan_type));
         }
 
         return Data { plans };
@@ -162,73 +196,118 @@ pub mod tests {
         return std::fs::read_to_string(file).unwrap();
     }
 
-    macro_rules! deserialize_tests {
-        ($($name:ident, $plan_type:expr)*) => {
-            $(
-                #[test]
-                fn $name() {
-                    get_test_plan(&$plan_type);
-                }
-            )*
-        };
+    mod plan {
+        use super::*;
+
+        mod from_str {
+            use super::*;
+
+            macro_rules!tests {
+                ($($name:ident, $plan_type:expr)*) => {
+                    $(
+                        #[test]
+                        fn $name() {
+                            get_test_plan(&$plan_type);
+                        }
+                    )*
+                };
+            }
+
+            tests! {
+                create, PlanType::Create
+                delete, PlanType::Delete
+                delete_create, PlanType::DeleteCreate
+                no_op, PlanType::NoOp
+                no_resources, PlanType::NoResources
+                update, PlanType::Update
+            }
+
+            #[test]
+            fn invalid_json() {
+                let plan = Plan::from_str("invalid json");
+                assert_eq!(
+                    plan.unwrap_err().message,
+                    "Failed to parse plan. expected value at line 1 column 1"
+                );
+            }
+        }
+
+        mod from_file {
+            use super::*;
+
+            #[test]
+            fn full() {
+                let path = utils::test::get_test_data_file_path("plans/artificial/full.json");
+                Plan::from_file(&path).unwrap();
+            }
+
+            #[test]
+            fn no_resource_changes() {
+                let path = utils::test::get_test_data_file_path(
+                    "plans/artificial/no-resource-changes.json",
+                );
+                Plan::from_file(&path).unwrap();
+            }
+
+            #[test]
+            fn invalid_path() {
+                let plan = Plan::from_file("invalid path");
+                assert_eq!(
+                    plan.unwrap_err().message,
+                    "Failed to read file(invalid path). No such file or directory (os error 2)"
+                );
+            }
+
+            #[test]
+            fn invalid_json() {
+                let path = utils::test::get_test_data_file_path("plans/artificial/invalid.json");
+                let plan = Plan::from_file(&path);
+                assert_eq!(
+                    plan.unwrap_err().message,
+                    "Failed to parse file(tests/data/plans/artificial/invalid.json). Failed to parse plan. missing field `format_version` at line 3 column 1"
+                );
+            }
+        }
     }
 
-    deserialize_tests! {
-        deserialize_create_plan, PlanType::Create
-        deserialize_delete_plan, PlanType::Delete
-        deserialize_delete_create_plan, PlanType::DeleteCreate
-        deserialize_no_op_plan, PlanType::NoOp
-        deserialize_no_resources_plan, PlanType::NoResources
-        deserialize_update_plan, PlanType::Update
-    }
+    mod data {
+        use super::*;
 
-    #[test]
-    fn plan_from_file_full() {
-        let path = utils::test::get_test_data_file_path("plans/artificial/full.json");
-        Plan::from_file(&path).unwrap();
-    }
+        mod from_files {
+            use super::*;
 
-    #[test]
-    fn plan_from_file_no_resource_changes() {
-        let path =
-            utils::test::get_test_data_file_path("plans/artificial/no-resource-changes.json");
-        Plan::from_file(&path).unwrap();
-    }
+            #[test]
+            fn default() {
+                let files = get_test_data_files();
+                let data = Data::from_files(&files).unwrap();
+                assert_eq!(data, get_test_data());
+            }
 
-    #[test]
-    fn plan_from_str_invalid_json() {
-        let plan = Plan::from_str("invalid json");
-        assert_eq!(
-            plan.unwrap_err().message,
-            "Failed to parse plan. expected value at line 1 column 1"
-        );
-    }
+            #[test]
+            fn glob() {
+                let files = vec!["tests/data/plans/*/terraform.tfplan.json".to_string()];
+                let data = Data::from_files(&files).unwrap();
+                assert_eq!(data, get_test_data());
+            }
 
-    #[test]
-    fn plan_from_file_invalid_path() {
-        let plan = Plan::from_file("invalid path");
-        assert_eq!(
-            plan.unwrap_err().message,
-            "Failed to read file(invalid path). No such file or directory (os error 2)"
-        );
-    }
+            #[test]
+            fn invalid_glob() {
+                let files = vec!["*****".to_string()];
+                let data = Data::from_files(&files);
+                assert_eq!(
+                    data.unwrap_err().message,
+                    "Failed to read file(*****), invalid glob. Pattern syntax error near position 2: wildcards are either regular `*` or recursive `**`"
+                );
+            }
 
-    #[test]
-    fn plan_from_file_invalid_json() {
-        let path = utils::test::get_test_data_file_path("plans/artificial/invalid.json");
-        let plan = Plan::from_file(&path);
-        assert_eq!(
-            plan.unwrap_err().message,
-            "Failed to parse file(tests/data/plans/artificial/invalid.json). Failed to parse plan. missing field `format_version` at line 3 column 1"
-        );
-    }
-
-    #[test]
-    fn data_from_files_invalid_path() {
-        let data = Data::from_files(&["invalid path".to_string()]);
-        assert_eq!(
-            data.unwrap_err().message,
-            "Failed to read file(invalid path). No such file or directory (os error 2)"
-        );
+            #[test]
+            fn no_files() {
+                let data = Data::from_files(&["invalid path".to_string()]);
+                assert_eq!(
+                    data.unwrap_err().message,
+                    "Failed to read file(invalid path). No files found."
+                );
+            }
+        }
     }
 }

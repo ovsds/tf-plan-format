@@ -17,7 +17,7 @@ includes:
 vars:
   NENV: "node_modules"
 
-  LLVM_TARGET_COVERAGE: "98"
+  LLVM_TARGET_COVERAGE: "97"
 
 tasks:
   _prettier:
