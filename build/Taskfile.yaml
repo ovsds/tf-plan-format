@@ -1,19 +1,34 @@
 version: 3
 
 tasks:
-  binaries:
+  all:
+    desc: Build all targets
     dir: "{{.TASKFILE_DIR}}"
-    desc: Build project for all platforms
+    cmds:
+      - docker buildx bake {{.CLI_ARGS}}
+
+  binaries:
+    desc: Build binaries
+    dir: "{{.TASKFILE_DIR}}"
     cmds:
       - echo 'Building project for all platforms...'
-      - docker buildx bake cross-bin
+      - docker buildx bake bin {{.CLI_ARGS}}
 
   image:
-    dir: "{{.TASKFILE_DIR}}"
     desc: Build docker image
+    dir: "{{.TASKFILE_DIR}}"
     cmds:
       - echo 'Building docker image...'
-      - docker buildx bake cross-image {{.CLI_ARGS}}
+      - docker buildx bake image {{.CLI_ARGS}}
+    env:
+      IMAGE_TAG: '{{.IMAGE_TAG | default "tf-plan-format:test"}}'
+
+  image-local:
+    dir: "{{.TASKFILE_DIR}}"
+    desc: Build docker for local platform
+    cmds:
+      - echo 'Building docker image locally...'
+      - docker buildx bake image-local {{.CLI_ARGS}}
     env:
       IMAGE_TAG: '{{.IMAGE_TAG | default "tf-plan-format:test"}}'
 
