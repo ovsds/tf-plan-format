@@ -1,3 +1,4 @@
+use crate::types;
 use serde::{Deserialize, Serialize};
 use std::str::FromStr;
 
@@ -57,20 +58,16 @@ pub struct Plan {
     errored: bool,
 }
 
-#[derive(Debug)]
-pub struct Error {
-    pub message: String,
-}
-
 impl FromStr for Plan {
-    type Err = Error;
+    type Err = types::Error;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match serde_json::from_str::<Plan>(s) {
             Ok(plan) => Ok(plan),
-            Err(e) => Err(Error {
-                message: format!("Failed to parse plan. {e}"),
-            }),
+            Err(e) => Err(types::Error::inherit(
+                e,
+                &"Failed to parse plan".to_string(),
+            )),
         }
     }
 }
@@ -78,13 +75,11 @@ impl FromStr for Plan {
 impl Plan {
     /// # Errors
     /// Returns an error if the file cannot be read or parsed
-    pub fn from_file(path: &str) -> Result<Self, Error> {
-        let raw_file = std::fs::read_to_string(path).map_err(|e| Error {
-            message: format!("Failed to read file({path}). {e}"),
-        })?;
-        Plan::from_str(&raw_file).map_err(|e| Error {
-            message: format!("Failed to parse file({path}). {}", e.message),
-        })
+    pub fn from_file(path: &str) -> Result<Self, types::Error> {
+        let raw_file = std::fs::read_to_string(path)
+            .map_err(|e| types::Error::inherit(e, &format!("Failed to read file({path})")))?;
+        Plan::from_str(&raw_file)
+            .map_err(|e| types::Error::inherit(e, &format!("Failed to parse file({path})")))
     }
 }
 
@@ -96,33 +91,37 @@ pub struct Data {
 impl Data {
     /// # Errors
     /// Returns an error if any of the files cannot be read or parsed
-    pub fn from_files(paths: &[String]) -> Result<Self, Error> {
+    pub fn from_files(paths: &[String]) -> Result<Self, types::Error> {
         let mut plans = std::collections::HashMap::new();
         for path_glob in paths {
-            let glob = glob::glob(path_glob).map_err(|e| Error {
-                message: format!("Failed to read file({path_glob}), invalid glob. {e}"),
+            let glob = glob::glob(path_glob).map_err(|e| {
+                types::Error::inherit(
+                    e,
+                    &format!("Failed to read file({path_glob}), invalid glob"),
+                )
             })?;
 
             let mut file_count = 0;
             for path in glob {
-                let path_buf = path.map_err(|e| Error {
-                    message: format!("Failed to read file({path_glob}). {e}"),
+                let path_buf = path.map_err(|e| {
+                    types::Error::inherit(e, &format!("Failed to read file({path_glob})"))
                 })?;
                 let Some(path) = path_buf.to_str() else {
-                    return Err(Error {
-                        message: format!("Failed to read file({path_glob}), invalid path."),
-                    });
+                    return Err(types::Error::new(format!(
+                        "Failed to read file({path_glob}), invalid path"
+                    )));
                 };
-                let plan = Plan::from_file(path)?;
+                let plan = Plan::from_file(path)
+                    .map_err(|e| types::Error::new(format!("Failed to read file({path}). {e}")))?;
                 plans.insert(path.to_string(), plan);
 
                 file_count += 1;
             }
 
             if file_count == 0 {
-                return Err(Error {
-                    message: format!("Failed to read file({path_glob}). No files found."),
-                });
+                return Err(types::Error::new(format!(
+                    "Failed to read file({path_glob}). No files found"
+                )));
             }
         }
         Ok(Data { plans })
@@ -305,7 +304,7 @@ pub mod tests {
                 let data = Data::from_files(&["invalid path".to_string()]);
                 assert_eq!(
                     data.unwrap_err().message,
-                    "Failed to read file(invalid path). No files found."
+                    "Failed to read file(invalid path). No files found"
                 );
             }
         }
