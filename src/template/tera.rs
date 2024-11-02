@@ -1,6 +1,7 @@
 use crate::tf;
 use crate::types;
 use core::str;
+use std::collections::HashSet;
 
 pub const GITHUB_MARKDOWN_TEMPLATE: &str = "
 {%- for plan_key, plan in data.plans %}<details>
@@ -25,6 +26,18 @@ No resource changes
 
 type Args = std::collections::HashMap<String, tera::Value>;
 
+fn render_result_action(action: &tf::ResultAction) -> String {
+    match action {
+        tf::ResultAction::Create => "✅".to_string(),
+        tf::ResultAction::Delete => "❌".to_string(),
+        tf::ResultAction::DeleteCreate => "♻️".to_string(),
+        tf::ResultAction::Update => "🔄".to_string(),
+        tf::ResultAction::NoOp => "🟰".to_string(),
+        tf::ResultAction::Read => "🔍".to_string(),
+        tf::ResultAction::Unknown => "❓".to_string(),
+    }
+}
+
 fn render_actions(args: &Args) -> tera::Result<tera::Value> {
     let Some(tera::Value::Array(actions)) = args.get("actions") else {
         return Err("actions must be an array".into());
@@ -39,13 +52,7 @@ fn render_actions(args: &Args) -> tera::Result<tera::Value> {
         .collect::<tera::Result<Vec<String>>>()?;
 
     match tf::ResultAction::from_strings(&actions) {
-        Ok(tf::ResultAction::Create) => Ok(tera::Value::String("✅".to_string())),
-        Ok(tf::ResultAction::Delete) => Ok(tera::Value::String("❌".to_string())),
-        Ok(tf::ResultAction::DeleteCreate) => Ok(tera::Value::String("♻️".to_string())),
-        Ok(tf::ResultAction::Update) => Ok(tera::Value::String("🔄".to_string())),
-        Ok(tf::ResultAction::NoOp) => Ok(tera::Value::String("🟰".to_string())),
-        Ok(tf::ResultAction::Read) => Ok(tera::Value::String("🔍".to_string())),
-        Ok(tf::ResultAction::Unknown) => Ok(tera::Value::String("❓".to_string())),
+        Ok(result_action) => Ok(tera::Value::String(render_result_action(&result_action))),
         Err(e) => Err(e.to_string().into()),
     }
 }
@@ -141,252 +148,194 @@ mod tests {
     mod render_actions {
         use super::*;
 
+        fn test(actions: impl serde::Serialize) -> tera::Result<String> {
+            let mut context = tera::Context::new();
+            context.insert("actions", &actions);
+
+            let mut tera = tera::Tera::default();
+            tera.register_function("render_actions", render_actions);
+
+            tera.add_raw_template("template", "{{ render_actions(actions=actions) }}")
+                .unwrap();
+
+            tera.render("template", &context)
+        }
+
         #[test]
         fn create() {
-            let mut args = std::collections::HashMap::new();
-            args.insert(
-                "actions".to_string(),
-                tera::Value::Array(vec![tera::Value::String("create".to_string())]),
-            );
-
-            let result = render_actions(&args).unwrap();
-            assert_eq!(tera::Value::String("✅".to_string()), result);
+            let actions = vec![tf::ResourceChangeChangeAction::Create];
+            assert_eq!(test(&actions).unwrap(), "✅");
         }
 
         #[test]
         fn delete() {
-            let mut args = std::collections::HashMap::new();
-            args.insert(
-                "actions".to_string(),
-                tera::Value::Array(vec![tera::Value::String("delete".to_string())]),
-            );
-
-            let result = render_actions(&args).unwrap();
-            assert_eq!(tera::Value::String("❌".to_string()), result);
+            let actions = vec![tf::ResourceChangeChangeAction::Delete];
+            assert_eq!(test(&actions).unwrap(), "❌");
         }
 
         #[test]
         fn delete_create() {
-            let mut args = std::collections::HashMap::new();
-            args.insert(
-                "actions".to_string(),
-                tera::Value::Array(vec![
-                    tera::Value::String("delete".to_string()),
-                    tera::Value::String("create".to_string()),
-                ]),
-            );
-
-            let result = render_actions(&args).unwrap();
-            assert_eq!(tera::Value::String("♻️".to_string()), result);
+            let actions = vec![
+                tf::ResourceChangeChangeAction::Delete,
+                tf::ResourceChangeChangeAction::Create,
+            ];
+            assert_eq!(test(&actions).unwrap(), "♻️");
         }
 
         #[test]
         fn create_delete() {
-            let mut args = std::collections::HashMap::new();
-            args.insert(
-                "actions".to_string(),
-                tera::Value::Array(vec![
-                    tera::Value::String("create".to_string()),
-                    tera::Value::String("delete".to_string()),
-                ]),
-            );
-
-            let result = render_actions(&args).unwrap();
-            assert_eq!(tera::Value::String("♻️".to_string()), result);
+            let actions = vec![
+                tf::ResourceChangeChangeAction::Create,
+                tf::ResourceChangeChangeAction::Delete,
+            ];
+            assert_eq!(test(actions).unwrap(), "♻️");
         }
 
         #[test]
         fn update() {
-            let mut args = std::collections::HashMap::new();
-            args.insert(
-                "actions".to_string(),
-                tera::Value::Array(vec![tera::Value::String("update".to_string())]),
-            );
-
-            let result = render_actions(&args).unwrap();
-            assert_eq!(tera::Value::String("🔄".to_string()), result);
+            let actions = vec![tf::ResourceChangeChangeAction::Update];
+            assert_eq!(test(&actions).unwrap(), "🔄");
         }
 
         #[test]
         fn no_op() {
-            let mut args = std::collections::HashMap::new();
-            args.insert(
-                "actions".to_string(),
-                tera::Value::Array(vec![tera::Value::String("no-op".to_string())]),
-            );
-
-            let result = render_actions(&args).unwrap();
-            assert_eq!(tera::Value::String("🟰".to_string()), result);
+            let actions = vec![tf::ResourceChangeChangeAction::NoOp];
+            assert_eq!(test(&actions).unwrap(), "🟰");
         }
 
         #[test]
         fn read() {
-            let mut args = std::collections::HashMap::new();
-            args.insert(
-                "actions".to_string(),
-                tera::Value::Array(vec![tera::Value::String("read".to_string())]),
-            );
-
-            let result = render_actions(&args).unwrap();
-            assert_eq!(tera::Value::String("🔍".to_string()), result);
+            let actions = vec![tf::ResourceChangeChangeAction::Read];
+            assert_eq!(test(&actions).unwrap(), "🔍");
         }
 
         #[test]
         fn unknown() {
-            let mut args = std::collections::HashMap::new();
-            args.insert("actions".to_string(), tera::Value::Array(vec![]));
-
-            let result = render_actions(&args).unwrap();
-            assert_eq!(tera::Value::String("❓".to_string()), result);
+            let actions: Vec<String> = vec![];
+            assert_eq!(test(&actions).unwrap(), "❓");
         }
 
         #[test]
         fn not_array() {
-            let mut args = std::collections::HashMap::new();
-            args.insert(
-                "actions".to_string(),
-                tera::Value::String("create".to_string()),
-            );
-
-            render_actions(&args).unwrap_err();
+            let actions = "not an array";
+            test(&actions).unwrap_err();
         }
 
         #[test]
-        fn invalid_action_type() {
-            let mut args = std::collections::HashMap::new();
-            args.insert(
-                "actions".to_string(),
-                tera::Value::Array(vec![tera::Value::Number(42.into())]),
-            );
-
-            render_actions(&args).unwrap_err();
+        fn not_string() {
+            let actions = vec![1];
+            test(&actions).unwrap_err();
         }
 
         #[test]
         fn invalid_action() {
-            let mut args = std::collections::HashMap::new();
-            args.insert(
-                "actions".to_string(),
-                tera::Value::Array(vec![tera::Value::String("invalid".to_string())]),
-            );
-
-            render_actions(&args).unwrap_err();
+            let actions = vec!["invalid"];
+            test(&actions).unwrap_err();
         }
     }
 
     mod render_changes {
         use super::*;
 
+        fn test(
+            before: impl serde::Serialize,
+            after: impl serde::Serialize,
+        ) -> tera::Result<String> {
+            let mut context = tera::Context::new();
+            context.insert("before", &before);
+            context.insert("after", &after);
+
+            let mut tera = tera::Tera::default();
+            tera.register_function("render_changes", render_changes);
+
+            tera.add_raw_template(
+                "template",
+                "{{ render_changes(before=before, after=after) }}",
+            )
+            .unwrap();
+
+            tera.render("template", &context)
+        }
+
         #[test]
         fn default() {
-            let mut before = tera::Map::new();
+            let mut before = std::collections::HashMap::new();
             before.insert("key".to_string(), tera::Value::Number(42.into()));
-            let mut after = tera::Map::new();
+            let mut after = std::collections::HashMap::new();
             after.insert("key".to_string(), tera::Value::Number(43.into()));
 
-            let mut args = std::collections::HashMap::new();
-            args.insert("before".to_string(), tera::Value::Object(before));
-            args.insert("after".to_string(), tera::Value::Object(after));
-
-            let result = render_changes(&args).unwrap();
-            assert_eq!(tera::Value::String("key: 42 -> 43\n".to_string()), result);
+            assert_eq!(test(&before, &after).unwrap(), "key: 42 -> 43\n");
         }
 
         #[test]
         fn no_changes() {
-            let mut before = tera::Map::new();
+            let mut before = std::collections::HashMap::new();
             before.insert("key".to_string(), tera::Value::Number(42.into()));
-            let mut after = tera::Map::new();
-            after.insert("key".to_string(), tera::Value::Number(42.into()));
+            let after = before.clone();
 
-            let mut args = std::collections::HashMap::new();
-            args.insert("before".to_string(), tera::Value::Object(before));
-            args.insert("after".to_string(), tera::Value::Object(after));
-
-            let result = render_changes(&args).unwrap();
-            assert_eq!(tera::Value::String("key: 42\n".to_string()), result);
+            assert_eq!(test(&before, &after).unwrap(), "key: 42\n");
         }
 
         #[test]
         fn no_before_key() {
-            let before = tera::Map::new();
-            let mut after = tera::Map::new();
+            let before: std::collections::HashMap<String, String> =
+                std::collections::HashMap::new();
+            let mut after = std::collections::HashMap::new();
             after.insert("key".to_string(), tera::Value::Number(42.into()));
 
-            let mut args = std::collections::HashMap::new();
-            args.insert("before".to_string(), tera::Value::Object(before));
-            args.insert("after".to_string(), tera::Value::Object(after));
-
-            let result = render_changes(&args).unwrap();
-            assert_eq!(tera::Value::String("key: null -> 42\n".to_string()), result);
+            assert_eq!(test(&before, &after).unwrap(), "key: null -> 42\n");
         }
 
         #[test]
         fn no_after_key() {
-            let mut before = tera::Map::new();
+            let mut before = std::collections::HashMap::new();
             before.insert("key".to_string(), tera::Value::Number(42.into()));
-            let after = tera::Map::new();
+            let after: std::collections::HashMap<String, String> = std::collections::HashMap::new();
 
-            let mut args = std::collections::HashMap::new();
-            args.insert("before".to_string(), tera::Value::Object(before));
-            args.insert("after".to_string(), tera::Value::Object(after));
-
-            let result = render_changes(&args).unwrap();
-            assert_eq!(tera::Value::String("key: 42 -> null\n".to_string()), result);
+            assert_eq!(test(&before, &after).unwrap(), "key: 42 -> null\n");
         }
 
         #[test]
         fn null_before() {
-            let mut after = tera::Map::new();
-            after.insert("key".to_string(), tera::Value::Number(42.into()));
+            let before = tera::Value::Null;
+            let mut after = std::collections::HashMap::new();
+            after.insert("key".to_string(), 42);
 
-            let mut args = std::collections::HashMap::new();
-            args.insert("before".to_string(), tera::Value::Null);
-            args.insert("after".to_string(), tera::Value::Object(after));
-
-            let result = render_changes(&args).unwrap();
-            assert_eq!(tera::Value::String("key: 42\n".to_string()), result);
+            assert_eq!(test(&before, &after).unwrap(), "key: 42\n");
         }
 
         #[test]
         fn null_after() {
-            let mut before = tera::Map::new();
-            before.insert("key".to_string(), tera::Value::Number(42.into()));
+            let mut before = std::collections::HashMap::new();
+            before.insert("key".to_string(), 42);
+            let after = tera::Value::Null;
 
-            let mut args = std::collections::HashMap::new();
-            args.insert("before".to_string(), tera::Value::Object(before));
-            args.insert("after".to_string(), tera::Value::Null);
-
-            let result = render_changes(&args).unwrap();
-            assert_eq!(tera::Value::String("key: 42\n".to_string()), result);
+            assert_eq!(test(&before, &after).unwrap(), "key: 42\n");
         }
 
         #[test]
         fn null_before_after() {
-            let mut args = std::collections::HashMap::new();
-            args.insert("before".to_string(), tera::Value::Null);
-            args.insert("after".to_string(), tera::Value::Null);
+            let before = tera::Value::Null;
+            let after = tera::Value::Null;
 
-            let result = render_changes(&args).unwrap();
-            assert_eq!(tera::Value::String(String::new()), result);
+            assert_eq!(test(&before, &after).unwrap(), "");
         }
 
         #[test]
-        fn no_before_raises() {
-            let mut args = std::collections::HashMap::new();
-            args.insert("after".to_string(), tera::Value::Object(tera::Map::new()));
+        fn before_wrong_type() {
+            let before = "not an object";
+            let after: std::collections::HashMap<String, String> = std::collections::HashMap::new();
 
-            let result = render_changes(&args);
-            assert!(result.is_err());
+            test(&before, &after).unwrap_err();
         }
 
         #[test]
-        fn no_after_raises() {
-            let mut args = std::collections::HashMap::new();
-            args.insert("before".to_string(), tera::Value::Object(tera::Map::new()));
+        fn after_wrong_type() {
+            let before: std::collections::HashMap<String, String> =
+                std::collections::HashMap::new();
+            let after = "not an object";
 
-            let result = render_changes(&args);
-            assert!(result.is_err());
+            test(&before, &after).unwrap_err();
         }
     }
 
