@@ -5,7 +5,7 @@ use std::collections::HashSet;
 
 pub const GITHUB_MARKDOWN_TEMPLATE: &str = "
 {%- for plan_key, plan in data.plans %}<details>
-<summary>{{ plan_key }}</summary>
+<summary>{{ render_plan_actions(plan=plan) }}{{ plan_key }}</summary>
 {%- if plan.resource_changes %}
 {%- for resource_change in plan.resource_changes %}
 <details>
@@ -55,6 +55,49 @@ fn render_actions(args: &Args) -> tera::Result<tera::Value> {
         Ok(result_action) => Ok(tera::Value::String(render_result_action(&result_action))),
         Err(e) => Err(e.to_string().into()),
     }
+}
+
+fn render_plan_actions(args: &Args) -> tera::Result<tera::Value> {
+    let Some(tera::Value::Object(plan)) = args.get("plan") else {
+        return Err("plan must be an object".into());
+    };
+    let resource_changes = match plan.get("resource_changes") {
+        Some(tera::Value::Array(resource_changes)) => resource_changes,
+        None | Some(tera::Value::Null) => return Ok(tera::Value::String(String::new())),
+        _ => return Err("resource_changes must be an array".into()),
+    };
+
+    let mut rendered_actions: HashSet<String> = std::collections::HashSet::new();
+
+    for resource_change in resource_changes {
+        let tera::Value::Object(resource_change) = resource_change else {
+            return Err("resource_change must be an object".into());
+        };
+        let Some(tera::Value::Object(change)) = resource_change.get("change") else {
+            return Err("resource_change must have change".into());
+        };
+        let Some(tera::Value::Array(actions)) = change.get("actions") else {
+            return Err("change must have actions".into());
+        };
+
+        let actions: Vec<String> = actions
+            .iter()
+            .map(|action| match action {
+                tera::Value::String(action) => Ok(action.clone()),
+                _ => Err("actions must be a string".into()),
+            })
+            .collect::<tera::Result<Vec<String>>>()?;
+
+        let result_action = tf::ResultAction::from_strings(&actions).map_err(|e| e.to_string())?;
+
+        rendered_actions.insert(render_result_action(&result_action));
+    }
+
+    // Sort the actions to ensure consistent output
+    let mut result: Vec<String> = rendered_actions.into_iter().collect();
+    result.sort();
+
+    Ok(tera::Value::String(result.join("")))
 }
 
 fn render_changes(args: &Args) -> tera::Result<tera::Value> {
@@ -117,6 +160,7 @@ pub fn render(data: &tf::Data, template: &str) -> Result<String, types::Error> {
     let mut tera = tera::Tera::default();
     tera.register_function("render_changes", render_changes);
     tera.register_function("render_actions", render_actions);
+    tera.register_function("render_plan_actions", render_plan_actions);
 
     let template_name = "template";
     match tera.add_raw_template(template_name, template) {
@@ -234,6 +278,69 @@ mod tests {
         }
     }
 
+    mod render_plan_actions {
+        use super::*;
+
+        fn test(plan: impl serde::Serialize) -> tera::Result<String> {
+            let mut context = tera::Context::new();
+            context.insert("plan", &plan);
+
+            let mut tera = tera::Tera::default();
+            tera.register_function("render_plan_actions", render_plan_actions);
+
+            tera.add_raw_template("template", "{{ render_plan_actions(plan=plan) }}")
+                .unwrap();
+
+            tera.render("template", &context)
+        }
+
+        fn get_resource_change(actions: Vec<tf::ResourceChangeChangeAction>) -> tf::ResourceChange {
+            tf::ResourceChange {
+                address: "address".to_string(),
+                name: "name".to_string(),
+                change: tf::ResourceChangeChange {
+                    actions,
+                    before: None,
+                    after: None,
+                },
+            }
+        }
+
+        #[test]
+        fn default() {
+            let plan = tf::Plan {
+                resource_changes: Some(vec![
+                    get_resource_change(vec![tf::ResourceChangeChangeAction::Create]),
+                    get_resource_change(vec![tf::ResourceChangeChangeAction::Delete]),
+                    get_resource_change(vec![
+                        tf::ResourceChangeChangeAction::Delete,
+                        tf::ResourceChangeChangeAction::Create,
+                    ]),
+                    get_resource_change(vec![tf::ResourceChangeChangeAction::Update]),
+                    get_resource_change(vec![tf::ResourceChangeChangeAction::NoOp]),
+                    get_resource_change(vec![tf::ResourceChangeChangeAction::Read]),
+                    get_resource_change(vec![]),
+                ]),
+            };
+            assert_eq!(test(&plan).unwrap(), "♻\u{fe0f}✅❌❓🔄🔍🟰");
+        }
+
+        #[test]
+        fn no_resource_changes() {
+            let plan = tf::Plan {
+                resource_changes: None,
+            };
+            assert_eq!(test(&plan).unwrap(), "");
+        }
+
+        #[test]
+        fn empty_resource_changes() {
+            let plan = tf::Plan {
+                resource_changes: Some(vec![]),
+            };
+            assert_eq!(test(&plan).unwrap(), "");
+        }
+    }
     mod render_changes {
         use super::*;
 
