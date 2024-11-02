@@ -9,7 +9,7 @@ fn main() {
     match tf_plan_format::cli::root(&cli.command, &mut stdout, &mut stderr) {
         Ok(()) => {}
         Err(e) => {
-            writeln!(stderr, "{}", e.message).unwrap();
+            writeln!(stderr, "{e}").unwrap();
             std::process::exit(e.exit_code);
         }
     }

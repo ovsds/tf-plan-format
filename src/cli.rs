@@ -1,6 +1,6 @@
 use crate::template;
 use crate::tf;
-use crate::utils;
+use crate::types;
 use clap::{Parser, Subcommand};
 use std::str::FromStr;
 
@@ -52,7 +52,7 @@ pub fn root(
     command: &Option<Commands>,
     stdout: impl std::io::Write,
     stderr: impl std::io::Write,
-) -> Result<(), utils::cli::CommandError> {
+) -> Result<(), types::CommandError> {
     match command {
         Some(Commands::Custom {
             engine,
@@ -69,38 +69,30 @@ fn custom(
     template: &str,
     files: &[String],
     mut stdout: impl std::io::Write,
-) -> Result<(), utils::cli::CommandError> {
-    let engine = template::Engine::from_str(engine).map_err(|()| utils::cli::CommandError {
-        message: format!("Invalid engine({engine})."),
-        exit_code: exitcode::USAGE,
+) -> Result<(), types::CommandError> {
+    let engine = template::Engine::from_str(engine).map_err(|()| {
+        types::CommandError::new(format!("Invalid engine({engine})"), exitcode::USAGE)
     })?;
 
-    let data = tf::Data::from_files(files).map_err(|e| utils::cli::CommandError {
-        message: format!("Failed to parse plan. {}", e.message),
-        exit_code: exitcode::USAGE,
+    let data = tf::Data::from_files(files).map_err(|e| {
+        types::CommandError::inherit(e, &"Failed to parse plan".to_string(), exitcode::USAGE)
     })?;
 
-    let result =
-        template::render(&engine, &data, template).map_err(|e| utils::cli::CommandError {
-            message: format!("Failed to render template. {}", e.message),
-            exit_code: exitcode::USAGE,
-        })?;
+    let result = template::render(&engine, &data, template).map_err(|e| {
+        types::CommandError::inherit(e, &"Failed to render template".to_string(), exitcode::USAGE)
+    })?;
 
     writeln!(stdout, "{result}").unwrap();
 
     Ok(())
 }
 
-fn github(
-    files: &[String],
-    mut stdout: impl std::io::Write,
-) -> Result<(), utils::cli::CommandError> {
+fn github(files: &[String], mut stdout: impl std::io::Write) -> Result<(), types::CommandError> {
     let engine = template::Engine::Tera;
     let template = template::tera::GITHUB_MARKDOWN_TEMPLATE;
 
-    let data = tf::Data::from_files(files).map_err(|e| utils::cli::CommandError {
-        message: format!("Failed to parse plan. {}", e.message),
-        exit_code: exitcode::USAGE,
+    let data = tf::Data::from_files(files).map_err(|e| {
+        types::CommandError::inherit(e, &"Failed to parse plan".to_string(), exitcode::USAGE)
     })?;
 
     // Should never fail as the template is hardcoded
@@ -114,9 +106,9 @@ fn github(
 fn none(
     mut _stdout: impl std::io::Write,
     mut _stderr: impl std::io::Write,
-) -> Result<(), utils::cli::CommandError> {
-    Err(utils::cli::CommandError {
-        message: "No command provided".to_string(),
-        exit_code: exitcode::USAGE,
-    })
+) -> Result<(), types::CommandError> {
+    Err(types::CommandError::new(
+        "No command provided".to_string(),
+        exitcode::USAGE,
+    ))
 }

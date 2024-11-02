@@ -1,4 +1,5 @@
 use crate::tf;
+use crate::types;
 use std::str::FromStr;
 
 pub mod tera;
@@ -19,14 +20,9 @@ impl FromStr for Engine {
     }
 }
 
-#[derive(Debug)]
-pub struct Error {
-    pub message: String,
-}
-
 /// # Errors
 /// Returns an error if rendering fails
-pub fn render(engine: &Engine, data: &tf::Data, template: &str) -> Result<String, Error> {
+pub fn render(engine: &Engine, data: &tf::Data, template: &str) -> Result<String, types::Error> {
     match engine {
         Engine::Tera => tera::render(data, template),
     }

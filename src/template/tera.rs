@@ -1,5 +1,5 @@
-use crate::template;
 use crate::tf;
+use crate::types;
 use core::str;
 
 pub const GITHUB_MARKDOWN_TEMPLATE: &str = "
@@ -90,7 +90,7 @@ fn render_changes(
 
 /// # Errors
 /// Returns an error if template is invalid or rendering fails
-pub fn render(data: &tf::Data, template: &str) -> Result<String, template::Error> {
+pub fn render(data: &tf::Data, template: &str) -> Result<String, types::Error> {
     let mut tera = tera::Tera::default();
     tera.register_function("render_changes", render_changes);
 
@@ -98,9 +98,10 @@ pub fn render(data: &tf::Data, template: &str) -> Result<String, template::Error
     match tera.add_raw_template(template_name, template) {
         Ok(()) => {}
         Err(e) => {
-            return Err(template::Error {
-                message: format!("Failed to add template({template}). {e}"),
-            });
+            return Err(types::Error::inherit(
+                e,
+                &format!("Failed to add template({template})"),
+            ));
         }
     }
 
@@ -109,9 +110,10 @@ pub fn render(data: &tf::Data, template: &str) -> Result<String, template::Error
 
     match tera.render(template_name, &context) {
         Ok(result) => Ok(result),
-        Err(e) => Err(template::Error {
-            message: format!("Failed to render template({template}). {e}"),
-        }),
+        Err(e) => Err(types::Error::inherit(
+            e,
+            &format!("Failed to render template({template})"),
+        )),
     }
 }
 
