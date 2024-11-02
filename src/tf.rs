@@ -89,9 +89,9 @@ impl ResultAction {
 
 #[derive(Serialize, Deserialize, Debug, PartialEq)]
 pub struct ResourceChangeChange {
-    actions: Vec<ResourceChangeChangeAction>,
-    before: Option<ValueMap>,
-    after: Option<ValueMap>,
+    pub actions: Vec<ResourceChangeChangeAction>,
+    pub before: Option<ValueMap>,
+    pub after: Option<ValueMap>,
     // after_unknown
     // before_sensitive
     // after_sensitive
@@ -99,24 +99,24 @@ pub struct ResourceChangeChange {
 
 #[derive(Serialize, Deserialize, Debug, PartialEq)]
 pub struct ResourceChange {
-    address: String,
-    mode: String,
+    pub address: String,
+    // mode: String,
     #[serde(rename = "type")]
-    type_: String,
-    name: String,
-    provider_name: String,
-    change: ResourceChangeChange,
+    // type_: String,
+    pub name: String,
+    // provider_name: String,
+    pub change: ResourceChangeChange,
 }
 
 #[derive(Serialize, Deserialize, Debug, PartialEq)]
 pub struct Plan {
-    format_version: String,
-    terraform_version: String,
+    // format_version: String,
+    // terraform_version: String,
     // planned_values
-    resource_changes: Option<Vec<ResourceChange>>,
+    pub resource_changes: Option<Vec<ResourceChange>>,
     // configuration
-    timestamp: String,
-    errored: bool,
+    // timestamp: String,
+    // errored: bool,
 }
 
 impl FromStr for Plan {
@@ -450,7 +450,7 @@ pub mod tests {
                 let plan = Plan::from_file(&path);
                 assert_eq!(
                     plan.unwrap_err().message,
-                    "Failed to parse file(tests/data/plans/artificial/invalid.json). Failed to parse plan. missing field `format_version` at line 3 column 1"
+                    "Failed to parse file(tests/data/plans/artificial/invalid.json). Failed to parse plan. invalid type: string \"invalid\", expected a sequence at line 2 column 31"
                 );
             }
         }
