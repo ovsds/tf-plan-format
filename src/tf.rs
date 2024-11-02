@@ -17,13 +17,74 @@ pub type ValueMap = std::collections::HashMap<String, Option<Value>>;
 
 #[derive(Serialize, Deserialize, Debug, PartialEq)]
 #[serde(rename_all = "lowercase")]
-enum ResourceChangeChangeAction {
+pub enum ResourceChangeChangeAction {
     Create,
     Read,
     Update,
     Delete,
     #[serde(rename = "no-op")]
     NoOp,
+}
+
+impl FromStr for ResourceChangeChangeAction {
+    type Err = types::Error;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match serde_json::from_str::<ResourceChangeChangeAction>(format!("\"{s}\"").as_str()) {
+            Ok(action) => Ok(action),
+            Err(e) => Err(types::Error::new(format!("Failed to parse action. {e}"))),
+        }
+    }
+}
+
+#[derive(Debug, PartialEq)]
+pub enum ResultAction {
+    Create,
+    DeleteCreate,
+    Read,
+    Update,
+    Delete,
+    NoOp,
+    Unknown,
+}
+
+impl ResultAction {
+    #[must_use]
+    pub fn from_actions(actions: &[ResourceChangeChangeAction]) -> ResultAction {
+        if actions.len() == 2
+            && actions.contains(&ResourceChangeChangeAction::Create)
+            && actions.contains(&ResourceChangeChangeAction::Delete)
+        {
+            return ResultAction::DeleteCreate;
+        };
+        if actions.len() == 1 {
+            return match actions[0] {
+                ResourceChangeChangeAction::Create => ResultAction::Create,
+                ResourceChangeChangeAction::Read => ResultAction::Read,
+                ResourceChangeChangeAction::Update => ResultAction::Update,
+                ResourceChangeChangeAction::Delete => ResultAction::Delete,
+                ResourceChangeChangeAction::NoOp => ResultAction::NoOp,
+            };
+        }
+        ResultAction::Unknown
+    }
+
+    /// # Errors
+    /// Returns an error if any of the actions cannot be parsed
+    pub fn from_strings(actions: &Vec<String>) -> Result<ResultAction, types::Error> {
+        let mut parsed_actions = Vec::new();
+        for action in actions {
+            match ResourceChangeChangeAction::from_str(action) {
+                Ok(action) => parsed_actions.push(action),
+                Err(_) => {
+                    return Err(types::Error::new(format!(
+                        "Failed to parse action({action})"
+                    )))
+                }
+            }
+        }
+        Ok(ResultAction::from_actions(&parsed_actions))
+    }
 }
 
 #[derive(Serialize, Deserialize, Debug, PartialEq)]
@@ -193,6 +254,132 @@ pub mod tests {
     pub fn get_test_plan_json(plan_type: &PlanType) -> String {
         let file = get_test_plan_file(plan_type);
         return std::fs::read_to_string(file).unwrap();
+    }
+
+    mod result_action {
+        use super::*;
+
+        mod from_actions {
+            use super::*;
+            #[test]
+            fn create() {
+                let actions = vec![ResourceChangeChangeAction::Create];
+                assert_eq!(ResultAction::from_actions(&actions), ResultAction::Create);
+            }
+
+            #[test]
+            fn delete() {
+                let actions = vec![ResourceChangeChangeAction::Delete];
+                assert_eq!(ResultAction::from_actions(&actions), ResultAction::Delete);
+            }
+
+            #[test]
+            fn delete_create() {
+                let actions = vec![
+                    ResourceChangeChangeAction::Create,
+                    ResourceChangeChangeAction::Delete,
+                ];
+                assert_eq!(
+                    ResultAction::from_actions(&actions),
+                    ResultAction::DeleteCreate
+                );
+            }
+
+            #[test]
+            fn no_op() {
+                let actions = vec![ResourceChangeChangeAction::NoOp];
+                assert_eq!(ResultAction::from_actions(&actions), ResultAction::NoOp);
+            }
+
+            #[test]
+            fn read() {
+                let actions = vec![ResourceChangeChangeAction::Read];
+                assert_eq!(ResultAction::from_actions(&actions), ResultAction::Read);
+            }
+
+            #[test]
+            fn update() {
+                let actions = vec![ResourceChangeChangeAction::Update];
+                assert_eq!(ResultAction::from_actions(&actions), ResultAction::Update);
+            }
+
+            #[test]
+            fn unknown() {
+                let actions = vec![];
+                assert_eq!(ResultAction::from_actions(&actions), ResultAction::Unknown);
+            }
+        }
+
+        mod from_strings {
+
+            use super::*;
+
+            #[test]
+            fn create() {
+                assert_eq!(
+                    ResultAction::from_strings(&vec!["create".to_string()]).unwrap(),
+                    ResultAction::Create
+                );
+            }
+
+            #[test]
+            fn delete() {
+                assert_eq!(
+                    ResultAction::from_strings(&vec!["delete".to_string()]).unwrap(),
+                    ResultAction::Delete
+                );
+            }
+
+            #[test]
+            fn delete_create() {
+                assert_eq!(
+                    ResultAction::from_strings(&vec!["create".to_string(), "delete".to_string()])
+                        .unwrap(),
+                    ResultAction::DeleteCreate
+                );
+            }
+
+            #[test]
+            fn no_op() {
+                assert_eq!(
+                    ResultAction::from_strings(&vec!["no-op".to_string()]).unwrap(),
+                    ResultAction::NoOp
+                );
+            }
+
+            #[test]
+            fn read() {
+                assert_eq!(
+                    ResultAction::from_strings(&vec!["read".to_string()]).unwrap(),
+                    ResultAction::Read
+                );
+            }
+
+            #[test]
+            fn update() {
+                assert_eq!(
+                    ResultAction::from_strings(&vec!["update".to_string()]).unwrap(),
+                    ResultAction::Update
+                );
+            }
+
+            #[test]
+            fn unknown() {
+                assert_eq!(
+                    ResultAction::from_strings(&vec![]).unwrap(),
+                    ResultAction::Unknown
+                );
+            }
+
+            #[test]
+            fn invalid() {
+                let action = ResultAction::from_strings(&vec!["invalid".to_string()]);
+                assert_eq!(
+                    action.unwrap_err().message,
+                    "Failed to parse action(invalid)"
+                );
+            }
+        }
     }
 
     mod plan {
