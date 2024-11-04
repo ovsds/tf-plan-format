@@ -13,7 +13,7 @@ pub const GITHUB_MARKDOWN_TEMPLATE: &str = "
 </summary>
 
 ```
-{{ render_changes(before=resource_change.change.before, after=resource_change.change.after) -}}
+{{ render_changes(change=resource_change.change) }}
 ```
 
 </details>
@@ -26,7 +26,7 @@ No resource changes
 
 type Args = std::collections::HashMap<String, tera::Value>;
 
-fn render_result_action(action: &tf::ResultAction) -> String {
+fn _render_result_action(action: &tf::ResultAction) -> String {
     match action {
         tf::ResultAction::Create => "✅".to_string(),
         tf::ResultAction::Delete => "❌".to_string(),
@@ -39,61 +39,27 @@ fn render_result_action(action: &tf::ResultAction) -> String {
 }
 
 fn render_actions(args: &Args) -> tera::Result<tera::Value> {
-    let Some(tera::Value::Array(actions)) = args.get("actions") else {
-        return Err("actions must be an array".into());
-    };
+    let raw_actions = args
+        .get("actions")
+        .ok_or("actions must be present in args")?;
+    let actions = tera::from_value::<Vec<tf::ResourceChangeChangeAction>>(raw_actions.clone())?;
 
-    let actions: Vec<String> = actions
-        .iter()
-        .map(|action| match action {
-            tera::Value::String(action) => Ok(action.clone()),
-            _ => Err("actions must be a string".into()),
-        })
-        .collect::<tera::Result<Vec<String>>>()?;
-
-    match tf::ResultAction::from_strings(&actions) {
-        Ok(result_action) => Ok(tera::Value::String(render_result_action(&result_action))),
-        Err(e) => Err(e.to_string().into()),
-    }
+    let result_action = tf::ResultAction::from_actions(&actions);
+    Ok(tera::Value::String(_render_result_action(&result_action)))
 }
 
 fn render_plan_actions(args: &Args) -> tera::Result<tera::Value> {
-    let Some(tera::Value::Object(plan)) = args.get("plan") else {
-        return Err("plan must be an object".into());
-    };
-    let resource_changes = match plan.get("resource_changes") {
-        Some(tera::Value::Array(resource_changes)) => resource_changes,
-        None | Some(tera::Value::Null) => return Ok(tera::Value::String(String::new())),
-        _ => return Err("resource_changes must be an array".into()),
-    };
+    let raw_plan = args.get("plan").ok_or("plan must be present in args")?;
+    let plan = tera::from_value::<tf::Plan>(raw_plan.clone())?;
 
     let mut rendered_actions: HashSet<String> = std::collections::HashSet::new();
 
-    for resource_change in resource_changes {
-        let tera::Value::Object(resource_change) = resource_change else {
-            return Err("resource_change must be an object".into());
-        };
-        let Some(tera::Value::Object(change)) = resource_change.get("change") else {
-            return Err("resource_change must have change".into());
-        };
-        let Some(tera::Value::Array(actions)) = change.get("actions") else {
-            return Err("change must have actions".into());
-        };
+    for resource_change in plan.resource_changes.unwrap_or_default() {
+        let actions = resource_change.change.actions;
+        let result_action = tf::ResultAction::from_actions(&actions);
 
-        let actions: Vec<String> = actions
-            .iter()
-            .map(|action| match action {
-                tera::Value::String(action) => Ok(action.clone()),
-                _ => Err("actions must be a string".into()),
-            })
-            .collect::<tera::Result<Vec<String>>>()?;
-
-        let result_action = tf::ResultAction::from_strings(&actions).map_err(|e| e.to_string())?;
-
-        rendered_actions.insert(render_result_action(&result_action));
+        rendered_actions.insert(_render_result_action(&result_action));
     }
-
-    // Sort the actions to ensure consistent output
     let mut result: Vec<String> = rendered_actions.into_iter().collect();
     result.sort();
 
@@ -101,56 +67,57 @@ fn render_plan_actions(args: &Args) -> tera::Result<tera::Value> {
 }
 
 fn render_changes(args: &Args) -> tera::Result<tera::Value> {
-    match (args.get("before"), args.get("after")) {
-        (Some(tera::Value::Object(before)), Some(tera::Value::Object(after))) => {
-            let mut result: Vec<(String, String)> = Vec::new();
+    let raw_change = args.get("change").ok_or("change must be present in args")?;
+    let change = tera::from_value::<tf::ResourceChangeChange>(raw_change.clone())?;
 
-            for (key, value) in before {
+    match (change.before, change.after) {
+        (Some(before), Some(after)) => {
+            let mut result: Vec<String> = Vec::new();
+
+            for (key, value) in &before {
                 match after.get(key) {
                     Some(after_value) => {
                         if value == after_value {
-                            result.push((key.clone(), format!("{value}")));
+                            result.push(format!("{key}: {}", tera::to_value(value)?));
                         } else {
-                            result.push((key.clone(), format!("{value} -> {after_value}")));
+                            result.push(format!(
+                                "{key}: {} -> {}",
+                                tera::to_value(value)?,
+                                tera::to_value(after_value)?
+                            ));
                         }
                     }
                     None => {
-                        result.push((key.clone(), format!("{value} -> null")));
+                        result.push(format!("{key}: {} -> null", tera::to_value(value)?));
                     }
                 }
             }
 
             for (key, value) in after {
-                if !before.contains_key(key) {
-                    result.push((key.clone(), format!("null -> {value}")));
+                if !before.contains_key(&key) {
+                    result.push(format!("{key}: null -> {}", tera::to_value(value)?));
                 }
             }
             result.sort();
-
-            let mut result_str = String::new();
-            for (key, value) in result {
-                result_str.push_str(&format!("{key}: {value}\n"));
-            }
-            Ok(tera::Value::String(result_str))
+            Ok(tera::Value::String(result.join("\n")))
         }
-        (Some(tera::Value::Object(before)), Some(tera::Value::Null)) => {
-            let mut result = String::new();
+        (Some(before), None) => {
+            let mut result: Vec<String> = Vec::new();
             for (key, value) in before {
-                result.push_str(&format!("{key}: {value}\n"));
+                result.push(format!("{key}: {}", tera::to_value(value)?));
             }
-            Ok(tera::Value::String(result))
+            result.sort();
+            Ok(tera::Value::String(result.join("\n")))
         }
-        (Some(tera::Value::Null), Some(tera::Value::Object(after))) => {
-            let mut result = String::new();
+        (None, Some(after)) => {
+            let mut result: Vec<String> = Vec::new();
             for (key, value) in after {
-                result.push_str(&format!("{key}: {value}\n"));
+                result.push(format!("{key}: {}", tera::to_value(value)?));
             }
-            Ok(tera::Value::String(result))
+            result.sort();
+            Ok(tera::Value::String(result.join("\n")))
         }
-        (Some(tera::Value::Null), Some(tera::Value::Null)) => {
-            Ok(tera::Value::String(String::new()))
-        }
-        _ => Err("before and after must be objects".into()),
+        (None, None) => Ok(tera::Value::String(String::new())),
     }
 }
 
@@ -192,10 +159,7 @@ mod tests {
     mod render_actions {
         use super::*;
 
-        fn test(actions: impl serde::Serialize) -> tera::Result<String> {
-            let mut context = tera::Context::new();
-            context.insert("actions", &actions);
-
+        fn test_with_context(context: tera::Context) -> tera::Result<String> {
             let mut tera = tera::Tera::default();
             tera.register_function("render_actions", render_actions);
 
@@ -205,16 +169,23 @@ mod tests {
             tera.render("template", &context)
         }
 
+        fn test(actions: Vec<tf::ResourceChangeChangeAction>) -> tera::Result<String> {
+            let mut context = tera::Context::new();
+            context.insert("actions", &actions);
+
+            test_with_context(context)
+        }
+
         #[test]
         fn create() {
             let actions = vec![tf::ResourceChangeChangeAction::Create];
-            assert_eq!(test(&actions).unwrap(), "✅");
+            assert_eq!(test(actions).unwrap(), "✅");
         }
 
         #[test]
         fn delete() {
             let actions = vec![tf::ResourceChangeChangeAction::Delete];
-            assert_eq!(test(&actions).unwrap(), "❌");
+            assert_eq!(test(actions).unwrap(), "❌");
         }
 
         #[test]
@@ -223,7 +194,7 @@ mod tests {
                 tf::ResourceChangeChangeAction::Delete,
                 tf::ResourceChangeChangeAction::Create,
             ];
-            assert_eq!(test(&actions).unwrap(), "♻️");
+            assert_eq!(test(actions).unwrap(), "♻️");
         }
 
         #[test]
@@ -238,53 +209,53 @@ mod tests {
         #[test]
         fn update() {
             let actions = vec![tf::ResourceChangeChangeAction::Update];
-            assert_eq!(test(&actions).unwrap(), "🔄");
+            assert_eq!(test(actions).unwrap(), "🔄");
         }
 
         #[test]
         fn no_op() {
             let actions = vec![tf::ResourceChangeChangeAction::NoOp];
-            assert_eq!(test(&actions).unwrap(), "🟰");
+            assert_eq!(test(actions).unwrap(), "🟰");
         }
 
         #[test]
         fn read() {
-            let actions = vec![tf::ResourceChangeChangeAction::Read];
-            assert_eq!(test(&actions).unwrap(), "🔍");
+            let actions: Vec<tf::ResourceChangeChangeAction> =
+                vec![tf::ResourceChangeChangeAction::Read];
+            assert_eq!(test(actions).unwrap(), "🔍");
         }
 
         #[test]
         fn unknown() {
-            let actions: Vec<String> = vec![];
-            assert_eq!(test(&actions).unwrap(), "❓");
+            let actions: Vec<tf::ResourceChangeChangeAction> = vec![];
+            assert_eq!(test(actions).unwrap(), "❓");
         }
 
         #[test]
-        fn not_array() {
-            let actions = "not an array";
-            test(&actions).unwrap_err();
+        fn not_in_args() {
+            let context = tera::Context::new();
+            let mut tera = tera::Tera::default();
+            tera.register_function("render_actions", render_actions);
+            tera.add_raw_template("template", "{{ render_actions() }}")
+                .unwrap();
+
+            tera.render("template", &context).unwrap_err();
         }
 
         #[test]
-        fn not_string() {
-            let actions = vec![1];
-            test(&actions).unwrap_err();
-        }
+        fn invalid_actions() {
+            let actions = vec!["invalid".to_string()];
+            let mut context = tera::Context::new();
+            context.insert("actions", &actions);
 
-        #[test]
-        fn invalid_action() {
-            let actions = vec!["invalid"];
-            test(&actions).unwrap_err();
+            test_with_context(context).unwrap_err();
         }
     }
 
     mod render_plan_actions {
         use super::*;
 
-        fn test(plan: impl serde::Serialize) -> tera::Result<String> {
-            let mut context = tera::Context::new();
-            context.insert("plan", &plan);
-
+        fn test_with_context(context: tera::Context) -> tera::Result<String> {
             let mut tera = tera::Tera::default();
             tera.register_function("render_plan_actions", render_plan_actions);
 
@@ -292,6 +263,13 @@ mod tests {
                 .unwrap();
 
             tera.render("template", &context)
+        }
+
+        fn test(plan: tf::Plan) -> tera::Result<String> {
+            let mut context = tera::Context::new();
+            context.insert("plan", &plan);
+
+            test_with_context(context)
         }
 
         fn get_resource_change(actions: Vec<tf::ResourceChangeChangeAction>) -> tf::ResourceChange {
@@ -322,7 +300,7 @@ mod tests {
                     get_resource_change(vec![]),
                 ]),
             };
-            assert_eq!(test(&plan).unwrap(), "♻\u{fe0f}✅❌❓🔄🔍🟰");
+            assert_eq!(test(plan).unwrap(), "♻\u{fe0f}✅❌❓🔄🔍🟰");
         }
 
         #[test]
@@ -330,7 +308,7 @@ mod tests {
             let plan = tf::Plan {
                 resource_changes: None,
             };
-            assert_eq!(test(&plan).unwrap(), "");
+            assert_eq!(test(plan).unwrap(), "");
         }
 
         #[test]
@@ -338,111 +316,132 @@ mod tests {
             let plan = tf::Plan {
                 resource_changes: Some(vec![]),
             };
-            assert_eq!(test(&plan).unwrap(), "");
+            assert_eq!(test(plan).unwrap(), "");
+        }
+
+        #[test]
+        fn not_in_args() {
+            let context = tera::Context::new();
+            let mut tera = tera::Tera::default();
+            tera.register_function("render_plan_actions", render_plan_actions);
+            tera.add_raw_template("template", "{{ render_plan_actions() }}")
+                .unwrap();
+
+            tera.render("template", &context).unwrap_err();
+        }
+
+        #[test]
+        fn invalid_plan() {
+            let plan = "invalid".to_string();
+            let mut context = tera::Context::new();
+            context.insert("plan", &plan);
+
+            test_with_context(context).unwrap_err();
         }
     }
+
     mod render_changes {
         use super::*;
 
-        fn test(
-            before: impl serde::Serialize,
-            after: impl serde::Serialize,
-        ) -> tera::Result<String> {
-            let mut context = tera::Context::new();
-            context.insert("before", &before);
-            context.insert("after", &after);
-
+        fn test_with_context(context: tera::Context) -> tera::Result<String> {
             let mut tera = tera::Tera::default();
             tera.register_function("render_changes", render_changes);
 
-            tera.add_raw_template(
-                "template",
-                "{{ render_changes(before=before, after=after) }}",
-            )
-            .unwrap();
+            tera.add_raw_template("template", "{{ render_changes(change=change) }}")
+                .unwrap();
 
             tera.render("template", &context)
         }
 
+        fn test(before: Option<tf::ValueMap>, after: Option<tf::ValueMap>) -> tera::Result<String> {
+            let change = tf::ResourceChangeChange {
+                actions: vec![tf::ResourceChangeChangeAction::Create],
+                before,
+                after,
+            };
+
+            let mut context = tera::Context::new();
+            context.insert("change", &change);
+
+            test_with_context(context)
+        }
+
         #[test]
         fn default() {
-            let mut before = std::collections::HashMap::new();
-            before.insert("key".to_string(), tera::Value::Number(42.into()));
-            let mut after = std::collections::HashMap::new();
-            after.insert("key".to_string(), tera::Value::Number(43.into()));
+            let mut before: tf::ValueMap = std::collections::HashMap::new();
+            before.insert("key".to_string(), Some(tf::Value::Integer(42.into())));
+            let mut after: tf::ValueMap = std::collections::HashMap::new();
+            after.insert("key".to_string(), Some(tf::Value::Integer(43.into())));
 
-            assert_eq!(test(&before, &after).unwrap(), "key: 42 -> 43\n");
+            assert_eq!(test(Some(before), Some(after)).unwrap(), "key: 42 -> 43");
         }
 
         #[test]
         fn no_changes() {
-            let mut before = std::collections::HashMap::new();
-            before.insert("key".to_string(), tera::Value::Number(42.into()));
+            let mut before: tf::ValueMap = std::collections::HashMap::new();
+            before.insert("key".to_string(), Some(tf::Value::Integer(42.into())));
             let after = before.clone();
 
-            assert_eq!(test(&before, &after).unwrap(), "key: 42\n");
+            assert_eq!(test(Some(before), Some(after)).unwrap(), "key: 42");
         }
 
         #[test]
-        fn no_before_key() {
-            let before: std::collections::HashMap<String, String> =
-                std::collections::HashMap::new();
-            let mut after = std::collections::HashMap::new();
-            after.insert("key".to_string(), tera::Value::Number(42.into()));
+        fn no_before_value() {
+            let before: tf::ValueMap = std::collections::HashMap::new();
+            let mut after: tf::ValueMap = std::collections::HashMap::new();
+            after.insert("key".to_string(), Some(tf::Value::Integer(42.into())));
 
-            assert_eq!(test(&before, &after).unwrap(), "key: null -> 42\n");
+            assert_eq!(test(Some(before), Some(after)).unwrap(), "key: null -> 42");
         }
 
         #[test]
-        fn no_after_key() {
-            let mut before = std::collections::HashMap::new();
-            before.insert("key".to_string(), tera::Value::Number(42.into()));
-            let after: std::collections::HashMap<String, String> = std::collections::HashMap::new();
+        fn no_after_value() {
+            let mut before: tf::ValueMap = std::collections::HashMap::new();
+            before.insert("key".to_string(), Some(tf::Value::Integer(42.into())));
+            let after: tf::ValueMap = std::collections::HashMap::new();
 
-            assert_eq!(test(&before, &after).unwrap(), "key: 42 -> null\n");
+            assert_eq!(test(Some(before), Some(after)).unwrap(), "key: 42 -> null");
         }
 
         #[test]
-        fn null_before() {
-            let before = tera::Value::Null;
-            let mut after = std::collections::HashMap::new();
-            after.insert("key".to_string(), 42);
+        fn no_before() {
+            let mut after: tf::ValueMap = std::collections::HashMap::new();
+            after.insert("key".to_string(), Some(tf::Value::Integer(42.into())));
 
-            assert_eq!(test(&before, &after).unwrap(), "key: 42\n");
+            assert_eq!(test(None, Some(after)).unwrap(), "key: 42");
         }
 
         #[test]
-        fn null_after() {
-            let mut before = std::collections::HashMap::new();
-            before.insert("key".to_string(), 42);
-            let after = tera::Value::Null;
+        fn no_after() {
+            let mut before: tf::ValueMap = std::collections::HashMap::new();
+            before.insert("key".to_string(), Some(tf::Value::Integer(42.into())));
 
-            assert_eq!(test(&before, &after).unwrap(), "key: 42\n");
+            assert_eq!(test(Some(before), None).unwrap(), "key: 42");
         }
 
         #[test]
-        fn null_before_after() {
-            let before = tera::Value::Null;
-            let after = tera::Value::Null;
-
-            assert_eq!(test(&before, &after).unwrap(), "");
+        fn no_before_no_after() {
+            assert_eq!(test(None, None).unwrap(), "");
         }
 
         #[test]
-        fn before_wrong_type() {
-            let before = "not an object";
-            let after: std::collections::HashMap<String, String> = std::collections::HashMap::new();
+        fn not_in_args() {
+            let context = tera::Context::new();
+            let mut tera = tera::Tera::default();
+            tera.register_function("render_changes", render_changes);
+            tera.add_raw_template("template", "{{ render_changes() }}")
+                .unwrap();
 
-            test(&before, &after).unwrap_err();
+            tera.render("template", &context).unwrap_err();
         }
 
         #[test]
-        fn after_wrong_type() {
-            let before: std::collections::HashMap<String, String> =
-                std::collections::HashMap::new();
-            let after = "not an object";
+        fn invalid_change() {
+            let change = "invalid".to_string();
+            let mut context = tera::Context::new();
+            context.insert("change", &change);
 
-            test(&before, &after).unwrap_err();
+            test_with_context(context).unwrap_err();
         }
     }
 
