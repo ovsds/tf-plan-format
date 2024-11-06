@@ -19,7 +19,8 @@ triggers_replace: null
 
 ```
 id: "4525788878524015586" -> null
-triggers: {"always_run":"2024-10-25T21:40:19Z"} -> {}
+triggers:
+  always_run: "2024-10-25T21:40:19Z" -> null
 ```
 
 </details>

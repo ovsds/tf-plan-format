@@ -1,12 +1,18 @@
+use itertools::Itertools;
+
 use crate::tf;
 use crate::types;
 use core::str;
 use std::collections::HashSet;
 
+const INDENT_STR: &str = "  ";
+
 pub const GITHUB_MARKDOWN_TEMPLATE: &str = "
 {%- for plan_key, plan in data.plans %}<details>
 <summary>{{ render_plan_actions(plan=plan) }}{{ plan_key }}</summary>
-{%- if plan.resource_changes %}
+{%- if not plan.resource_changes %}
+No resource changes
+{%- else %}
 {%- for resource_change in plan.resource_changes %}
 <details>
 <summary>{{ render_actions(actions=resource_change.change.actions) }}{{ resource_change.address }}
@@ -18,8 +24,6 @@ pub const GITHUB_MARKDOWN_TEMPLATE: &str = "
 
 </details>
 {%- endfor %}
-{%- else %}
-No resource changes
 {%- endif %}
 </details>
 {% endfor %}";
@@ -66,55 +70,144 @@ fn render_plan_actions(args: &Args) -> tera::Result<tera::Value> {
     Ok(tera::Value::String(result.join("")))
 }
 
+fn _render_plaintext(value: &tf::Value) -> String {
+    format!("{}", tera::to_value(value).unwrap())
+}
+
+fn _render_unchanged_plaintext(key: &str, value: &tf::Value, indent_count: usize) -> Vec<String> {
+    vec![format!(
+        "{}{key}: {}",
+        INDENT_STR.repeat(indent_count),
+        _render_plaintext(value)
+    )]
+}
+
+fn _render_unchanged_hashmap_value(
+    value: &std::collections::HashMap<String, tf::Value>,
+    indent_count: usize,
+) -> Vec<String> {
+    let mut result: Vec<String> = Vec::new();
+    for (key, value) in value.iter().sorted_by_key(|x| x.0) {
+        result.extend(_render_unchanged(key, value, indent_count));
+    }
+    result
+}
+
+fn _render_unchanged_hashmap(
+    key: &str,
+    value: &std::collections::HashMap<String, tf::Value>,
+    indent_count: usize,
+) -> Vec<String> {
+    let mut result: Vec<String> = Vec::new();
+    result.push(format!("{}{key}:", INDENT_STR.repeat(indent_count)));
+    result.extend(_render_unchanged_hashmap_value(value, indent_count + 1));
+    result
+}
+
+fn _render_unchanged(key: &str, value: &tf::Value, indent_count: usize) -> Vec<String> {
+    match value {
+        tf::Value::Object(map) => _render_unchanged_hashmap(key, map, indent_count),
+        _ => _render_unchanged_plaintext(key, value, indent_count),
+    }
+}
+
+fn _render_changed_plaintext(
+    key: &str,
+    before_value: &tf::Value,
+    after_value: &tf::Value,
+    indent_count: usize,
+) -> Vec<String> {
+    vec![format!(
+        "{}{key}: {} -> {}",
+        INDENT_STR.repeat(indent_count),
+        _render_plaintext(before_value),
+        _render_plaintext(after_value)
+    )]
+}
+
+fn _render_changed_hashmap_value(
+    before: &std::collections::HashMap<String, tf::Value>,
+    after: &std::collections::HashMap<String, tf::Value>,
+    indent_count: usize,
+) -> Vec<String> {
+    let mut keys: HashSet<String> = HashSet::new();
+    keys.extend(before.keys().cloned());
+    keys.extend(after.keys().cloned());
+
+    let mut result: Vec<String> = Vec::new();
+    for key in keys.iter().sorted() {
+        let before_value = before.get(key).unwrap_or(&tf::Value::Null);
+        let after_value = after.get(key).unwrap_or(&tf::Value::Null);
+        result.extend(_render_changed(
+            key,
+            before_value,
+            after_value,
+            indent_count,
+        ));
+    }
+    result
+}
+
+fn _render_changed_hashmap(
+    key: &str,
+    before: &std::collections::HashMap<String, tf::Value>,
+    after: &std::collections::HashMap<String, tf::Value>,
+    indent_count: usize,
+) -> Vec<String> {
+    let mut result: Vec<String> = Vec::new();
+    result.push(format!("{}{key}:", INDENT_STR.repeat(indent_count)));
+    result.extend(_render_changed_hashmap_value(
+        before,
+        after,
+        indent_count + 1,
+    ));
+    result
+}
+
+fn _render_changed(
+    key: &str,
+    before_value: &tf::Value,
+    after_value: &tf::Value,
+    indent_count: usize,
+) -> Vec<String> {
+    match (before_value, after_value) {
+        (tf::Value::Object(before), tf::Value::Object(after)) => {
+            _render_changed_hashmap(key, before, after, indent_count)
+        }
+        (tf::Value::Null, tf::Value::Object(after)) => {
+            _render_unchanged_hashmap(key, after, indent_count)
+        }
+        (tf::Value::Object(before), tf::Value::Null) => {
+            _render_unchanged_hashmap(key, before, indent_count)
+        }
+        (_, _) => {
+            if before_value == after_value {
+                _render_unchanged_plaintext(key, before_value, indent_count)
+            } else {
+                _render_changed_plaintext(key, before_value, after_value, indent_count)
+            }
+        }
+    }
+}
+
 fn render_changes(args: &Args) -> tera::Result<tera::Value> {
     let raw_change = args.get("change").ok_or("change must be present in args")?;
     let change = tera::from_value::<tf::ResourceChangeChange>(raw_change.clone())?;
 
-    match (change.before, change.after) {
+    let before = change.before;
+    let after = change.after;
+
+    match (before, after) {
         (Some(before), Some(after)) => {
-            let mut result: Vec<String> = Vec::new();
-
-            for (key, value) in &before {
-                match after.get(key) {
-                    Some(after_value) => {
-                        if value == after_value {
-                            result.push(format!("{key}: {}", tera::to_value(value)?));
-                        } else {
-                            result.push(format!(
-                                "{key}: {} -> {}",
-                                tera::to_value(value)?,
-                                tera::to_value(after_value)?
-                            ));
-                        }
-                    }
-                    None => {
-                        result.push(format!("{key}: {} -> null", tera::to_value(value)?));
-                    }
-                }
-            }
-
-            for (key, value) in after {
-                if !before.contains_key(&key) {
-                    result.push(format!("{key}: null -> {}", tera::to_value(value)?));
-                }
-            }
-            result.sort();
+            let result = _render_changed_hashmap_value(&before, &after, 0);
             Ok(tera::Value::String(result.join("\n")))
         }
         (Some(before), None) => {
-            let mut result: Vec<String> = Vec::new();
-            for (key, value) in before {
-                result.push(format!("{key}: {}", tera::to_value(value)?));
-            }
-            result.sort();
+            let result = _render_unchanged_hashmap_value(&before, 0);
             Ok(tera::Value::String(result.join("\n")))
         }
         (None, Some(after)) => {
-            let mut result: Vec<String> = Vec::new();
-            for (key, value) in after {
-                result.push(format!("{key}: {}", tera::to_value(value)?));
-            }
-            result.sort();
+            let result = _render_unchanged_hashmap_value(&after, 0);
             Ok(tera::Value::String(result.join("\n")))
         }
         (None, None) => Ok(tera::Value::String(String::new())),
@@ -134,7 +227,7 @@ pub fn render(data: &tf::Data, template: &str) -> Result<String, types::Error> {
         Ok(()) => {}
         Err(e) => {
             return Err(types::Error::inherit(
-                e,
+                &e,
                 &format!("Failed to add template({template})"),
             ));
         }
@@ -146,7 +239,7 @@ pub fn render(data: &tf::Data, template: &str) -> Result<String, types::Error> {
     match tera.render(template_name, &context) {
         Ok(result) => Ok(result),
         Err(e) => Err(types::Error::inherit(
-            e,
+            &e,
             &format!("Failed to render template({template})"),
         )),
     }
@@ -366,62 +459,121 @@ mod tests {
             test_with_context(context)
         }
 
-        #[test]
-        fn default() {
-            let mut before: tf::ValueMap = std::collections::HashMap::new();
-            before.insert("key".to_string(), Some(tf::Value::Integer(42.into())));
-            let mut after: tf::ValueMap = std::collections::HashMap::new();
-            after.insert("key".to_string(), Some(tf::Value::Integer(43.into())));
+        fn get_test_data() -> tf::ValueMap {
+            let mut map = std::collections::HashMap::new();
+            map.insert(
+                "string".to_string(),
+                tf::Value::String("string".to_string()),
+            );
+            map.insert("integer".to_string(), tf::Value::Integer(42));
+            map.insert("float".to_string(), tf::Value::Float(42.1));
+            map.insert("bool".to_string(), tf::Value::Boolean(true));
+            map.insert(
+                "array".to_string(),
+                tf::Value::Array(vec![tf::Value::Integer(42)]),
+            );
+            map.insert("object".to_string(), {
+                let mut map = std::collections::HashMap::new();
+                map.insert("inner_integer".to_string(), tf::Value::Integer(42));
+                tf::Value::Object(map)
+            });
+            map.insert("object_to_null".to_string(), {
+                let mut map = std::collections::HashMap::new();
+                map.insert("inner_integer".to_string(), tf::Value::Integer(42));
+                tf::Value::Object(map)
+            });
+            map.insert("null_to_object".to_string(), tf::Value::Null);
+            map.insert("null".to_string(), tf::Value::Null);
+            map
+        }
 
-            assert_eq!(test(Some(before), Some(after)).unwrap(), "key: 42 -> 43");
+        fn get_another_test_data() -> tf::ValueMap {
+            let mut map = std::collections::HashMap::new();
+            map.insert(
+                "string".to_string(),
+                tf::Value::String("another string".to_string()),
+            );
+            map.insert("integer".to_string(), tf::Value::Integer(43));
+            map.insert("float".to_string(), tf::Value::Float(43.1));
+            map.insert("bool".to_string(), tf::Value::Boolean(false));
+            map.insert(
+                "array".to_string(),
+                tf::Value::Array(vec![tf::Value::Integer(43)]),
+            );
+            map.insert("object".to_string(), {
+                let mut map = std::collections::HashMap::new();
+                map.insert("inner_integer".to_string(), tf::Value::Integer(43));
+                tf::Value::Object(map)
+            });
+            map.insert("object_to_null".to_string(), tf::Value::Null);
+            map.insert("null_to_object".to_string(), {
+                let mut map = std::collections::HashMap::new();
+                map.insert("inner_integer".to_string(), tf::Value::Integer(43));
+                tf::Value::Object(map)
+            });
+            map.insert("null".to_string(), tf::Value::Null);
+            map
         }
 
         #[test]
-        fn no_changes() {
-            let mut before: tf::ValueMap = std::collections::HashMap::new();
-            before.insert("key".to_string(), Some(tf::Value::Integer(42.into())));
-            let after = before.clone();
+        fn before_after() {
+            let result = test(Some(get_test_data()), Some(get_another_test_data())).unwrap();
 
-            assert_eq!(test(Some(before), Some(after)).unwrap(), "key: 42");
+            let expected = r#"array: [42] -> [43]
+bool: true -> false
+float: 42.1 -> 43.1
+integer: 42 -> 43
+null: null
+null_to_object:
+  inner_integer: 43
+object:
+  inner_integer: 42 -> 43
+object_to_null:
+  inner_integer: 42
+string: "string" -> "another string""#;
+            pretty_assertions::assert_eq!(result, expected);
         }
 
         #[test]
-        fn no_before_value() {
-            let before: tf::ValueMap = std::collections::HashMap::new();
-            let mut after: tf::ValueMap = std::collections::HashMap::new();
-            after.insert("key".to_string(), Some(tf::Value::Integer(42.into())));
+        fn before() {
+            let result = test(Some(get_test_data()), None).unwrap();
 
-            assert_eq!(test(Some(before), Some(after)).unwrap(), "key: null -> 42");
+            let expected = r#"array: [42]
+bool: true
+float: 42.1
+integer: 42
+null: null
+null_to_object: null
+object:
+  inner_integer: 42
+object_to_null:
+  inner_integer: 42
+string: "string""#;
+            pretty_assertions::assert_eq!(result, expected);
         }
 
         #[test]
-        fn no_after_value() {
-            let mut before: tf::ValueMap = std::collections::HashMap::new();
-            before.insert("key".to_string(), Some(tf::Value::Integer(42.into())));
-            let after: tf::ValueMap = std::collections::HashMap::new();
+        fn after() {
+            let result = test(None, Some(get_test_data())).unwrap();
 
-            assert_eq!(test(Some(before), Some(after)).unwrap(), "key: 42 -> null");
+            let expected = r#"array: [42]
+bool: true
+float: 42.1
+integer: 42
+null: null
+null_to_object: null
+object:
+  inner_integer: 42
+object_to_null:
+  inner_integer: 42
+string: "string""#;
+            pretty_assertions::assert_eq!(result, expected);
         }
 
         #[test]
-        fn no_before() {
-            let mut after: tf::ValueMap = std::collections::HashMap::new();
-            after.insert("key".to_string(), Some(tf::Value::Integer(42.into())));
-
-            assert_eq!(test(None, Some(after)).unwrap(), "key: 42");
-        }
-
-        #[test]
-        fn no_after() {
-            let mut before: tf::ValueMap = std::collections::HashMap::new();
-            before.insert("key".to_string(), Some(tf::Value::Integer(42.into())));
-
-            assert_eq!(test(Some(before), None).unwrap(), "key: 42");
-        }
-
-        #[test]
-        fn no_before_no_after() {
-            assert_eq!(test(None, None).unwrap(), "");
+        fn none() {
+            let result = test(None, None).unwrap();
+            assert_eq!(result, "");
         }
 
         #[test]
@@ -456,7 +608,7 @@ mod tests {
 
             let expected =
                 utils::test::get_test_data_file_contents("renders/tera/github_markdown.md");
-            assert_eq!(expected, result);
+            pretty_assertions::assert_eq!(expected, result);
         }
 
         #[test]
