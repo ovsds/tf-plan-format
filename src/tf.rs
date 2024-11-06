@@ -9,11 +9,12 @@ pub enum Value {
     Integer(i64),
     Float(f64),
     Boolean(bool),
-    Array(Vec<Option<Value>>),
-    Object(std::collections::HashMap<String, Option<Value>>),
+    Array(Vec<Value>),
+    Object(ValueMap),
+    Null,
 }
 
-pub type ValueMap = std::collections::HashMap<String, Option<Value>>;
+pub type ValueMap = std::collections::HashMap<String, Value>;
 
 #[derive(Serialize, Deserialize, Debug, PartialEq)]
 #[serde(rename_all = "lowercase")]
@@ -126,7 +127,7 @@ impl FromStr for Plan {
         match serde_json::from_str::<Plan>(s) {
             Ok(plan) => Ok(plan),
             Err(e) => Err(types::Error::inherit(
-                e,
+                &e,
                 &"Failed to parse plan".to_string(),
             )),
         }
@@ -138,9 +139,9 @@ impl Plan {
     /// Returns an error if the file cannot be read or parsed
     pub fn from_file(path: &str) -> Result<Self, types::Error> {
         let raw_file = std::fs::read_to_string(path)
-            .map_err(|e| types::Error::inherit(e, &format!("Failed to read file({path})")))?;
+            .map_err(|e| types::Error::inherit(&e, &format!("Failed to read file({path})")))?;
         Plan::from_str(&raw_file)
-            .map_err(|e| types::Error::inherit(e, &format!("Failed to parse file({path})")))
+            .map_err(|e| types::Error::inherit(&e, &format!("Failed to parse file({path})")))
     }
 }
 
@@ -157,7 +158,7 @@ impl Data {
         for path_glob in paths {
             let glob = glob::glob(path_glob).map_err(|e| {
                 types::Error::inherit(
-                    e,
+                    &e,
                     &format!("Failed to read file({path_glob}), invalid glob"),
                 )
             })?;
@@ -165,7 +166,7 @@ impl Data {
             let mut file_count = 0;
             for path in glob {
                 let path_buf = path.map_err(|e| {
-                    types::Error::inherit(e, &format!("Failed to read file({path_glob})"))
+                    types::Error::inherit(&e, &format!("Failed to read file({path_glob})"))
                 })?;
                 let Some(path) = path_buf.to_str() else {
                     return Err(types::Error::new(format!(
