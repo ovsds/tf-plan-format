@@ -9,11 +9,11 @@ const INDENT_STR: &str = "  ";
 
 pub const GITHUB_MARKDOWN_TEMPLATE: &str = "
 {%- for plan_key, plan in data.plans %}<details>
-<summary>{{ render_plan_actions(plan=plan) }}{{ plan_key }}</summary>
-{%- if not plan.resource_changes %}
+<summary>{{ render_plan_actions(plan=plan.raw) }}{{ plan_key }}</summary>
+{%- if not plan.raw.resource_changes %}
 No resource changes
 {%- else %}
-{%- for resource_change in plan.resource_changes %}
+{%- for resource_change in plan.raw.resource_changes %}
 <details>
 <summary>{{ render_actions(actions=resource_change.change.actions) }}{{ resource_change.address }}
 </summary>
@@ -46,7 +46,7 @@ fn render_actions(args: &Args) -> tera::Result<tera::Value> {
     let raw_actions = args
         .get("actions")
         .ok_or("actions must be present in args")?;
-    let actions = tera::from_value::<Vec<tf::ResourceChangeChangeAction>>(raw_actions.clone())?;
+    let actions = tera::from_value::<Vec<tf::RawResourceChangeChangeAction>>(raw_actions.clone())?;
 
     let result_action = tf::ResultAction::from_actions(&actions);
     Ok(tera::Value::String(_render_result_action(&result_action)))
@@ -54,7 +54,7 @@ fn render_actions(args: &Args) -> tera::Result<tera::Value> {
 
 fn render_plan_actions(args: &Args) -> tera::Result<tera::Value> {
     let raw_plan = args.get("plan").ok_or("plan must be present in args")?;
-    let plan = tera::from_value::<tf::Plan>(raw_plan.clone())?;
+    let plan = tera::from_value::<tf::RawPlan>(raw_plan.clone())?;
 
     let mut rendered_actions: HashSet<String> = std::collections::HashSet::new();
 
@@ -70,11 +70,15 @@ fn render_plan_actions(args: &Args) -> tera::Result<tera::Value> {
     Ok(tera::Value::String(result.join("")))
 }
 
-fn _render_plaintext(value: &tf::Value) -> String {
+fn _render_plaintext(value: &tf::RawValue) -> String {
     format!("{}", tera::to_value(value).unwrap())
 }
 
-fn _render_unchanged_plaintext(key: &str, value: &tf::Value, indent_count: usize) -> Vec<String> {
+fn _render_unchanged_plaintext(
+    key: &str,
+    value: &tf::RawValue,
+    indent_count: usize,
+) -> Vec<String> {
     vec![format!(
         "{}{key}: {}",
         INDENT_STR.repeat(indent_count),
@@ -83,7 +87,7 @@ fn _render_unchanged_plaintext(key: &str, value: &tf::Value, indent_count: usize
 }
 
 fn _render_unchanged_hashmap_value(
-    value: &std::collections::HashMap<String, tf::Value>,
+    value: &std::collections::HashMap<String, tf::RawValue>,
     indent_count: usize,
 ) -> Vec<String> {
     let mut result: Vec<String> = Vec::new();
@@ -95,7 +99,7 @@ fn _render_unchanged_hashmap_value(
 
 fn _render_unchanged_hashmap(
     key: &str,
-    value: &std::collections::HashMap<String, tf::Value>,
+    value: &std::collections::HashMap<String, tf::RawValue>,
     indent_count: usize,
 ) -> Vec<String> {
     let mut result: Vec<String> = Vec::new();
@@ -104,17 +108,17 @@ fn _render_unchanged_hashmap(
     result
 }
 
-fn _render_unchanged(key: &str, value: &tf::Value, indent_count: usize) -> Vec<String> {
+fn _render_unchanged(key: &str, value: &tf::RawValue, indent_count: usize) -> Vec<String> {
     match value {
-        tf::Value::Object(map) => _render_unchanged_hashmap(key, map, indent_count),
+        tf::RawValue::Object(map) => _render_unchanged_hashmap(key, map, indent_count),
         _ => _render_unchanged_plaintext(key, value, indent_count),
     }
 }
 
 fn _render_changed_plaintext(
     key: &str,
-    before_value: &tf::Value,
-    after_value: &tf::Value,
+    before_value: &tf::RawValue,
+    after_value: &tf::RawValue,
     indent_count: usize,
 ) -> Vec<String> {
     vec![format!(
@@ -126,8 +130,8 @@ fn _render_changed_plaintext(
 }
 
 fn _render_changed_hashmap_value(
-    before: &std::collections::HashMap<String, tf::Value>,
-    after: &std::collections::HashMap<String, tf::Value>,
+    before: &std::collections::HashMap<String, tf::RawValue>,
+    after: &std::collections::HashMap<String, tf::RawValue>,
     indent_count: usize,
 ) -> Vec<String> {
     let mut keys: HashSet<String> = HashSet::new();
@@ -136,8 +140,8 @@ fn _render_changed_hashmap_value(
 
     let mut result: Vec<String> = Vec::new();
     for key in keys.iter().sorted() {
-        let before_value = before.get(key).unwrap_or(&tf::Value::Null);
-        let after_value = after.get(key).unwrap_or(&tf::Value::Null);
+        let before_value = before.get(key).unwrap_or(&tf::RawValue::Null);
+        let after_value = after.get(key).unwrap_or(&tf::RawValue::Null);
         result.extend(_render_changed(
             key,
             before_value,
@@ -150,8 +154,8 @@ fn _render_changed_hashmap_value(
 
 fn _render_changed_hashmap(
     key: &str,
-    before: &std::collections::HashMap<String, tf::Value>,
-    after: &std::collections::HashMap<String, tf::Value>,
+    before: &std::collections::HashMap<String, tf::RawValue>,
+    after: &std::collections::HashMap<String, tf::RawValue>,
     indent_count: usize,
 ) -> Vec<String> {
     let mut result: Vec<String> = Vec::new();
@@ -166,18 +170,18 @@ fn _render_changed_hashmap(
 
 fn _render_changed(
     key: &str,
-    before_value: &tf::Value,
-    after_value: &tf::Value,
+    before_value: &tf::RawValue,
+    after_value: &tf::RawValue,
     indent_count: usize,
 ) -> Vec<String> {
     match (before_value, after_value) {
-        (tf::Value::Object(before), tf::Value::Object(after)) => {
+        (tf::RawValue::Object(before), tf::RawValue::Object(after)) => {
             _render_changed_hashmap(key, before, after, indent_count)
         }
-        (tf::Value::Null, tf::Value::Object(after)) => {
+        (tf::RawValue::Null, tf::RawValue::Object(after)) => {
             _render_unchanged_hashmap(key, after, indent_count)
         }
-        (tf::Value::Object(before), tf::Value::Null) => {
+        (tf::RawValue::Object(before), tf::RawValue::Null) => {
             _render_unchanged_hashmap(key, before, indent_count)
         }
         (_, _) => {
@@ -192,7 +196,7 @@ fn _render_changed(
 
 fn render_changes(args: &Args) -> tera::Result<tera::Value> {
     let raw_change = args.get("change").ok_or("change must be present in args")?;
-    let change = tera::from_value::<tf::ResourceChangeChange>(raw_change.clone())?;
+    let change = tera::from_value::<tf::RawResourceChangeChange>(raw_change.clone())?;
 
     let before = change.before;
     let after = change.after;
@@ -262,7 +266,7 @@ mod tests {
             tera.render("template", &context)
         }
 
-        fn test(actions: Vec<tf::ResourceChangeChangeAction>) -> tera::Result<String> {
+        fn test(actions: Vec<tf::RawResourceChangeChangeAction>) -> tera::Result<String> {
             let mut context = tera::Context::new();
             context.insert("actions", &actions);
 
@@ -271,21 +275,21 @@ mod tests {
 
         #[test]
         fn create() {
-            let actions = vec![tf::ResourceChangeChangeAction::Create];
+            let actions = vec![tf::RawResourceChangeChangeAction::Create];
             assert_eq!(test(actions).unwrap(), "✅");
         }
 
         #[test]
         fn delete() {
-            let actions = vec![tf::ResourceChangeChangeAction::Delete];
+            let actions = vec![tf::RawResourceChangeChangeAction::Delete];
             assert_eq!(test(actions).unwrap(), "❌");
         }
 
         #[test]
         fn delete_create() {
             let actions = vec![
-                tf::ResourceChangeChangeAction::Delete,
-                tf::ResourceChangeChangeAction::Create,
+                tf::RawResourceChangeChangeAction::Delete,
+                tf::RawResourceChangeChangeAction::Create,
             ];
             assert_eq!(test(actions).unwrap(), "♻️");
         }
@@ -293,34 +297,34 @@ mod tests {
         #[test]
         fn create_delete() {
             let actions = vec![
-                tf::ResourceChangeChangeAction::Create,
-                tf::ResourceChangeChangeAction::Delete,
+                tf::RawResourceChangeChangeAction::Create,
+                tf::RawResourceChangeChangeAction::Delete,
             ];
             assert_eq!(test(actions).unwrap(), "♻️");
         }
 
         #[test]
         fn update() {
-            let actions = vec![tf::ResourceChangeChangeAction::Update];
+            let actions = vec![tf::RawResourceChangeChangeAction::Update];
             assert_eq!(test(actions).unwrap(), "🔄");
         }
 
         #[test]
         fn no_op() {
-            let actions = vec![tf::ResourceChangeChangeAction::NoOp];
+            let actions = vec![tf::RawResourceChangeChangeAction::NoOp];
             assert_eq!(test(actions).unwrap(), "🟰");
         }
 
         #[test]
         fn read() {
-            let actions: Vec<tf::ResourceChangeChangeAction> =
-                vec![tf::ResourceChangeChangeAction::Read];
+            let actions: Vec<tf::RawResourceChangeChangeAction> =
+                vec![tf::RawResourceChangeChangeAction::Read];
             assert_eq!(test(actions).unwrap(), "🔍");
         }
 
         #[test]
         fn unknown() {
-            let actions: Vec<tf::ResourceChangeChangeAction> = vec![];
+            let actions: Vec<tf::RawResourceChangeChangeAction> = vec![];
             assert_eq!(test(actions).unwrap(), "❓");
         }
 
@@ -358,18 +362,20 @@ mod tests {
             tera.render("template", &context)
         }
 
-        fn test(plan: tf::Plan) -> tera::Result<String> {
+        fn test(plan: tf::RawPlan) -> tera::Result<String> {
             let mut context = tera::Context::new();
             context.insert("plan", &plan);
 
             test_with_context(context)
         }
 
-        fn get_resource_change(actions: Vec<tf::ResourceChangeChangeAction>) -> tf::ResourceChange {
-            tf::ResourceChange {
+        fn get_resource_change(
+            actions: Vec<tf::RawResourceChangeChangeAction>,
+        ) -> tf::RawResourceChange {
+            tf::RawResourceChange {
                 address: "address".to_string(),
                 name: "name".to_string(),
-                change: tf::ResourceChangeChange {
+                change: tf::RawResourceChangeChange {
                     actions,
                     before: None,
                     after: None,
@@ -381,17 +387,17 @@ mod tests {
 
         #[test]
         fn default() {
-            let plan = tf::Plan {
+            let plan = tf::RawPlan {
                 resource_changes: Some(vec![
-                    get_resource_change(vec![tf::ResourceChangeChangeAction::Create]),
-                    get_resource_change(vec![tf::ResourceChangeChangeAction::Delete]),
+                    get_resource_change(vec![tf::RawResourceChangeChangeAction::Create]),
+                    get_resource_change(vec![tf::RawResourceChangeChangeAction::Delete]),
                     get_resource_change(vec![
-                        tf::ResourceChangeChangeAction::Delete,
-                        tf::ResourceChangeChangeAction::Create,
+                        tf::RawResourceChangeChangeAction::Delete,
+                        tf::RawResourceChangeChangeAction::Create,
                     ]),
-                    get_resource_change(vec![tf::ResourceChangeChangeAction::Update]),
-                    get_resource_change(vec![tf::ResourceChangeChangeAction::NoOp]),
-                    get_resource_change(vec![tf::ResourceChangeChangeAction::Read]),
+                    get_resource_change(vec![tf::RawResourceChangeChangeAction::Update]),
+                    get_resource_change(vec![tf::RawResourceChangeChangeAction::NoOp]),
+                    get_resource_change(vec![tf::RawResourceChangeChangeAction::Read]),
                     get_resource_change(vec![]),
                 ]),
             };
@@ -400,7 +406,7 @@ mod tests {
 
         #[test]
         fn no_resource_changes() {
-            let plan = tf::Plan {
+            let plan = tf::RawPlan {
                 resource_changes: None,
             };
             assert_eq!(test(plan).unwrap(), "");
@@ -408,7 +414,7 @@ mod tests {
 
         #[test]
         fn empty_resource_changes() {
-            let plan = tf::Plan {
+            let plan = tf::RawPlan {
                 resource_changes: Some(vec![]),
             };
             assert_eq!(test(plan).unwrap(), "");
@@ -449,8 +455,8 @@ mod tests {
         }
 
         fn test(before: Option<tf::ValueMap>, after: Option<tf::ValueMap>) -> tera::Result<String> {
-            let change = tf::ResourceChangeChange {
-                actions: vec![tf::ResourceChangeChangeAction::Create],
+            let change = tf::RawResourceChangeChange {
+                actions: vec![tf::RawResourceChangeChangeAction::Create],
                 before,
                 after,
                 before_sensitive: None,
@@ -467,27 +473,27 @@ mod tests {
             let mut map = std::collections::HashMap::new();
             map.insert(
                 "string".to_string(),
-                tf::Value::String("string".to_string()),
+                tf::RawValue::String("string".to_string()),
             );
-            map.insert("integer".to_string(), tf::Value::Integer(42));
-            map.insert("float".to_string(), tf::Value::Float(42.1));
-            map.insert("bool".to_string(), tf::Value::Boolean(true));
+            map.insert("integer".to_string(), tf::RawValue::Integer(42));
+            map.insert("float".to_string(), tf::RawValue::Float(42.1));
+            map.insert("bool".to_string(), tf::RawValue::Boolean(true));
             map.insert(
                 "array".to_string(),
-                tf::Value::Array(vec![tf::Value::Integer(42)]),
+                tf::RawValue::Array(vec![tf::RawValue::Integer(42)]),
             );
             map.insert("object".to_string(), {
                 let mut map = std::collections::HashMap::new();
-                map.insert("inner_integer".to_string(), tf::Value::Integer(42));
-                tf::Value::Object(map)
+                map.insert("inner_integer".to_string(), tf::RawValue::Integer(42));
+                tf::RawValue::Object(map)
             });
             map.insert("object_to_null".to_string(), {
                 let mut map = std::collections::HashMap::new();
-                map.insert("inner_integer".to_string(), tf::Value::Integer(42));
-                tf::Value::Object(map)
+                map.insert("inner_integer".to_string(), tf::RawValue::Integer(42));
+                tf::RawValue::Object(map)
             });
-            map.insert("null_to_object".to_string(), tf::Value::Null);
-            map.insert("null".to_string(), tf::Value::Null);
+            map.insert("null_to_object".to_string(), tf::RawValue::Null);
+            map.insert("null".to_string(), tf::RawValue::Null);
             map
         }
 
@@ -495,27 +501,27 @@ mod tests {
             let mut map = std::collections::HashMap::new();
             map.insert(
                 "string".to_string(),
-                tf::Value::String("another string".to_string()),
+                tf::RawValue::String("another string".to_string()),
             );
-            map.insert("integer".to_string(), tf::Value::Integer(43));
-            map.insert("float".to_string(), tf::Value::Float(43.1));
-            map.insert("bool".to_string(), tf::Value::Boolean(false));
+            map.insert("integer".to_string(), tf::RawValue::Integer(43));
+            map.insert("float".to_string(), tf::RawValue::Float(43.1));
+            map.insert("bool".to_string(), tf::RawValue::Boolean(false));
             map.insert(
                 "array".to_string(),
-                tf::Value::Array(vec![tf::Value::Integer(43)]),
+                tf::RawValue::Array(vec![tf::RawValue::Integer(43)]),
             );
             map.insert("object".to_string(), {
                 let mut map = std::collections::HashMap::new();
-                map.insert("inner_integer".to_string(), tf::Value::Integer(43));
-                tf::Value::Object(map)
+                map.insert("inner_integer".to_string(), tf::RawValue::Integer(43));
+                tf::RawValue::Object(map)
             });
-            map.insert("object_to_null".to_string(), tf::Value::Null);
+            map.insert("object_to_null".to_string(), tf::RawValue::Null);
             map.insert("null_to_object".to_string(), {
                 let mut map = std::collections::HashMap::new();
-                map.insert("inner_integer".to_string(), tf::Value::Integer(43));
-                tf::Value::Object(map)
+                map.insert("inner_integer".to_string(), tf::RawValue::Integer(43));
+                tf::RawValue::Object(map)
             });
-            map.insert("null".to_string(), tf::Value::Null);
+            map.insert("null".to_string(), tf::RawValue::Null);
             map
         }
 
