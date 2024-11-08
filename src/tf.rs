@@ -152,11 +152,13 @@ impl RawPlan {
     }
 }
 
-#[derive(Serialize, Debug, PartialEq)]
+#[derive(Deserialize, Serialize, Debug, PartialEq)]
 pub struct Change {
     pub address: String,
     pub name: String,
     pub action: Action,
+    pub before: Option<ValueMap>,
+    pub after: Option<ValueMap>,
     pub raw: RawResourceChange,
 }
 
@@ -167,6 +169,8 @@ impl Change {
             address: raw.address.clone(),
             name: raw.name.clone(),
             action: Action::from_actions(&raw.change.actions),
+            before: raw.change.before.clone(),
+            after: raw.change.after.clone(),
             raw,
         }
     }
