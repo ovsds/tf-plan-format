@@ -3,7 +3,7 @@
   "terraform_version": "test_terraform_version",
   "resource_changes": [
     {
-      "address": "test_address",
+      "address": "full",
       "mode": "test_mode",
       "type": "test_type",
       "name": "test_name",
@@ -67,39 +67,33 @@
             "key_null": null
           },
           "key_null": null
-        }
-      }
-    },
-    {
-      "address": "test_address",
-      "mode": "test_mode",
-      "type": "test_type",
-      "name": "test_name",
-      "provider_name": "test_provider_name",
-      "change": {
-        "actions": [],
-        "before": null,
-        "after": {
-          "test_key": "test_value"
-        }
-      }
-    },
-    {
-      "address": "test_address",
-      "mode": "test_mode",
-      "type": "test_type",
-      "name": "test_name",
-      "provider_name": "test_provider_name",
-      "change": {
-        "actions": [],
-        "before": {
-          "test_key": "test_value"
         },
-        "after": null
+        "before_sensitive": {
+          "key_boolean": true,
+          "key_object": {
+            "key_boolean": false,
+            "key_object": {
+              "key_boolean": true
+            },
+            "key_null": null
+          },
+          "key_null": null
+        },
+        "after_sensitive": {
+          "key_boolean": true,
+          "key_object": {
+            "key_boolean": false,
+            "key_object": {
+              "key_boolean": true
+            },
+            "key_null": null
+          },
+          "key_null": null
+        }
       }
     },
     {
-      "address": "test_address",
+      "address": "nulls",
       "mode": "test_mode",
       "type": "test_type",
       "name": "test_name",
@@ -107,7 +101,19 @@
       "change": {
         "actions": [],
         "before": null,
-        "after": null
+        "after": null,
+        "before_sensitive": null,
+        "after_sensitive": null
+      }
+    },
+    {
+      "address": "no_changes",
+      "mode": "test_mode",
+      "type": "test_type",
+      "name": "test_name",
+      "provider_name": "test_provider_name",
+      "change": {
+        "actions": []
       }
     }
   ],

@@ -373,6 +373,8 @@ mod tests {
                     actions,
                     before: None,
                     after: None,
+                    before_sensitive: None,
+                    after_sensitive: None,
                 },
             }
         }
@@ -451,6 +453,8 @@ mod tests {
                 actions: vec![tf::ResourceChangeChangeAction::Create],
                 before,
                 after,
+                before_sensitive: None,
+                after_sensitive: None,
             };
 
             let mut context = tera::Context::new();

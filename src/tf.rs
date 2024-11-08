@@ -17,6 +17,16 @@ pub enum Value {
 pub type ValueMap = std::collections::HashMap<String, Value>;
 
 #[derive(Serialize, Deserialize, Debug, PartialEq)]
+#[serde(untagged)]
+pub enum BoolValue {
+    Boolean(bool),
+    Object(BoolValueMap),
+    Null,
+}
+
+pub type BoolValueMap = std::collections::HashMap<String, BoolValue>;
+
+#[derive(Serialize, Deserialize, Debug, PartialEq)]
 #[serde(rename_all = "lowercase")]
 pub enum ResourceChangeChangeAction {
     Create,
@@ -94,8 +104,8 @@ pub struct ResourceChangeChange {
     pub before: Option<ValueMap>,
     pub after: Option<ValueMap>,
     // after_unknown
-    // before_sensitive
-    // after_sensitive
+    pub before_sensitive: Option<BoolValue>,
+    pub after_sensitive: Option<BoolValue>,
 }
 
 #[derive(Serialize, Deserialize, Debug, PartialEq)]
