@@ -15,11 +15,11 @@ No resource changes
 {%- else %}
 {%- for change in plan.changes %}
 <details>
-<summary>{{ render_action(action=change.action) }}{{ change.raw.address }}
+<summary>{{ render_action(action=change.action) }}{{ change.address }}
 </summary>
 
 ```
-{{ render_changes(change=change.raw.change) }}
+{{ render_changes(before=change.before, after=change.after) }}
 ```
 
 </details>
@@ -185,11 +185,11 @@ fn _render_changed(
 }
 
 fn render_changes(args: &Args) -> tera::Result<tera::Value> {
-    let raw_change = args.get("change").ok_or("change must be present in args")?;
-    let change = tera::from_value::<tf::RawResourceChangeChange>(raw_change.clone())?;
+    let before = args.get("before").ok_or("before must be present in args")?;
+    let after = args.get("after").ok_or("after must be present in args")?;
 
-    let before = change.before;
-    let after = change.after;
+    let before = tera::from_value::<Option<tf::ValueMap>>(before.clone())?;
+    let after = tera::from_value::<Option<tf::ValueMap>>(after.clone())?;
 
     match (before, after) {
         (Some(before), Some(after)) => {
@@ -363,23 +363,19 @@ mod tests {
             let mut tera = tera::Tera::default();
             tera.register_function("render_changes", render_changes);
 
-            tera.add_raw_template("template", "{{ render_changes(change=change) }}")
-                .unwrap();
+            tera.add_raw_template(
+                "template",
+                "{{ render_changes(before=before, after=after) }}",
+            )
+            .unwrap();
 
             tera.render("template", &context)
         }
 
         fn test(before: Option<tf::ValueMap>, after: Option<tf::ValueMap>) -> tera::Result<String> {
-            let change = tf::RawResourceChangeChange {
-                actions: vec![tf::RawResourceChangeChangeAction::Create],
-                before,
-                after,
-                before_sensitive: None,
-                after_sensitive: None,
-            };
-
             let mut context = tera::Context::new();
-            context.insert("change", &change);
+            context.insert("before", &before);
+            context.insert("after", &after);
 
             test_with_context(context)
         }
