@@ -4,17 +4,17 @@ use std::str::FromStr;
 
 #[derive(Serialize, Deserialize, Debug, PartialEq, Clone)]
 #[serde(untagged)]
-pub enum Value {
+pub enum RawValue {
     String(String),
     Integer(i64),
     Float(f64),
     Boolean(bool),
-    Array(Vec<Value>),
+    Array(Vec<RawValue>),
     Object(ValueMap),
     Null,
 }
 
-pub type ValueMap = std::collections::HashMap<String, Value>;
+pub type ValueMap = std::collections::HashMap<String, RawValue>;
 
 #[derive(Serialize, Deserialize, Debug, PartialEq)]
 #[serde(untagged)]
@@ -28,7 +28,7 @@ pub type BoolValueMap = std::collections::HashMap<String, BoolValue>;
 
 #[derive(Serialize, Deserialize, Debug, PartialEq)]
 #[serde(rename_all = "lowercase")]
-pub enum ResourceChangeChangeAction {
+pub enum RawResourceChangeChangeAction {
     Create,
     Read,
     Update,
@@ -37,11 +37,11 @@ pub enum ResourceChangeChangeAction {
     NoOp,
 }
 
-impl FromStr for ResourceChangeChangeAction {
+impl FromStr for RawResourceChangeChangeAction {
     type Err = types::Error;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        match serde_json::from_str::<ResourceChangeChangeAction>(format!("\"{s}\"").as_str()) {
+        match serde_json::from_str::<RawResourceChangeChangeAction>(format!("\"{s}\"").as_str()) {
             Ok(action) => Ok(action),
             Err(e) => Err(types::Error::new(format!("Failed to parse action. {e}"))),
         }
@@ -61,20 +61,20 @@ pub enum ResultAction {
 
 impl ResultAction {
     #[must_use]
-    pub fn from_actions(actions: &[ResourceChangeChangeAction]) -> ResultAction {
+    pub fn from_actions(actions: &[RawResourceChangeChangeAction]) -> ResultAction {
         if actions.len() == 2
-            && actions.contains(&ResourceChangeChangeAction::Create)
-            && actions.contains(&ResourceChangeChangeAction::Delete)
+            && actions.contains(&RawResourceChangeChangeAction::Create)
+            && actions.contains(&RawResourceChangeChangeAction::Delete)
         {
             return ResultAction::DeleteCreate;
         };
         if actions.len() == 1 {
             return match actions[0] {
-                ResourceChangeChangeAction::Create => ResultAction::Create,
-                ResourceChangeChangeAction::Read => ResultAction::Read,
-                ResourceChangeChangeAction::Update => ResultAction::Update,
-                ResourceChangeChangeAction::Delete => ResultAction::Delete,
-                ResourceChangeChangeAction::NoOp => ResultAction::NoOp,
+                RawResourceChangeChangeAction::Create => ResultAction::Create,
+                RawResourceChangeChangeAction::Read => ResultAction::Read,
+                RawResourceChangeChangeAction::Update => ResultAction::Update,
+                RawResourceChangeChangeAction::Delete => ResultAction::Delete,
+                RawResourceChangeChangeAction::NoOp => ResultAction::NoOp,
             };
         }
         ResultAction::Unknown
@@ -85,7 +85,7 @@ impl ResultAction {
     pub fn from_strings(actions: &Vec<String>) -> Result<ResultAction, types::Error> {
         let mut parsed_actions = Vec::new();
         for action in actions {
-            match ResourceChangeChangeAction::from_str(action) {
+            match RawResourceChangeChangeAction::from_str(action) {
                 Ok(action) => parsed_actions.push(action),
                 Err(_) => {
                     return Err(types::Error::new(format!(
@@ -99,8 +99,8 @@ impl ResultAction {
 }
 
 #[derive(Serialize, Deserialize, Debug, PartialEq)]
-pub struct ResourceChangeChange {
-    pub actions: Vec<ResourceChangeChangeAction>,
+pub struct RawResourceChangeChange {
+    pub actions: Vec<RawResourceChangeChangeAction>,
     pub before: Option<ValueMap>,
     pub after: Option<ValueMap>,
     // after_unknown
@@ -109,32 +109,32 @@ pub struct ResourceChangeChange {
 }
 
 #[derive(Serialize, Deserialize, Debug, PartialEq)]
-pub struct ResourceChange {
+pub struct RawResourceChange {
     pub address: String,
     // mode: String,
     #[serde(rename = "type")]
     // type_: String,
     pub name: String,
     // provider_name: String,
-    pub change: ResourceChangeChange,
+    pub change: RawResourceChangeChange,
 }
 
 #[derive(Serialize, Deserialize, Debug, PartialEq)]
-pub struct Plan {
+pub struct RawPlan {
     // format_version: String,
     // terraform_version: String,
     // planned_values
-    pub resource_changes: Option<Vec<ResourceChange>>,
+    pub resource_changes: Option<Vec<RawResourceChange>>,
     // configuration
     // timestamp: String,
     // errored: bool,
 }
 
-impl FromStr for Plan {
+impl FromStr for RawPlan {
     type Err = types::Error;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        match serde_json::from_str::<Plan>(s) {
+        match serde_json::from_str::<RawPlan>(s) {
             Ok(plan) => Ok(plan),
             Err(e) => Err(types::Error::inherit(
                 &e,
@@ -144,14 +144,26 @@ impl FromStr for Plan {
     }
 }
 
-impl Plan {
+impl RawPlan {
     /// # Errors
     /// Returns an error if the file cannot be read or parsed
     pub fn from_file(path: &str) -> Result<Self, types::Error> {
         let raw_file = std::fs::read_to_string(path)
             .map_err(|e| types::Error::inherit(&e, &format!("Failed to read file({path})")))?;
-        Plan::from_str(&raw_file)
+        RawPlan::from_str(&raw_file)
             .map_err(|e| types::Error::inherit(&e, &format!("Failed to parse file({path})")))
+    }
+}
+
+#[derive(Serialize, Debug, PartialEq)]
+pub struct Plan {
+    raw: RawPlan,
+}
+
+impl Plan {
+    #[must_use]
+    pub fn from_raw(raw: RawPlan) -> Self {
+        Plan { raw }
     }
 }
 
@@ -164,7 +176,7 @@ impl Data {
     /// # Errors
     /// Returns an error if any of the files cannot be read or parsed
     pub fn from_files(paths: &[String]) -> Result<Self, types::Error> {
-        let mut plans = std::collections::HashMap::new();
+        let mut plans: std::collections::HashMap<String, Plan> = std::collections::HashMap::new();
         for path_glob in paths {
             let glob = glob::glob(path_glob).map_err(|e| {
                 types::Error::inherit(
@@ -183,9 +195,9 @@ impl Data {
                         "Failed to read file({path_glob}), invalid path"
                     )));
                 };
-                let plan = Plan::from_file(path)
+                let plan = RawPlan::from_file(path)
                     .map_err(|e| types::Error::new(format!("Failed to read file({path}). {e}")))?;
-                plans.insert(path.to_string(), plan);
+                plans.insert(path.to_string(), Plan::from_raw(plan));
 
                 file_count += 1;
             }
@@ -234,7 +246,7 @@ pub mod tests {
     }
 
     pub fn get_test_data() -> Data {
-        let mut plans = std::collections::HashMap::new();
+        let mut plans: std::collections::HashMap<String, Plan> = std::collections::HashMap::new();
 
         for plan_type in get_test_data_plans() {
             plans.insert(get_test_plan_file(&plan_type), get_test_plan(&plan_type));
@@ -259,7 +271,8 @@ pub mod tests {
 
     pub fn get_test_plan(plan_type: &PlanType) -> Plan {
         let json = get_test_plan_json(plan_type);
-        return Plan::from_str(&json).unwrap();
+        let raw = RawPlan::from_str(&json).unwrap();
+        return Plan::from_raw(raw);
     }
 
     pub fn get_test_plan_json(plan_type: &PlanType) -> String {
@@ -274,21 +287,21 @@ pub mod tests {
             use super::*;
             #[test]
             fn create() {
-                let actions = vec![ResourceChangeChangeAction::Create];
+                let actions = vec![RawResourceChangeChangeAction::Create];
                 assert_eq!(ResultAction::from_actions(&actions), ResultAction::Create);
             }
 
             #[test]
             fn delete() {
-                let actions = vec![ResourceChangeChangeAction::Delete];
+                let actions = vec![RawResourceChangeChangeAction::Delete];
                 assert_eq!(ResultAction::from_actions(&actions), ResultAction::Delete);
             }
 
             #[test]
             fn delete_create() {
                 let actions = vec![
-                    ResourceChangeChangeAction::Create,
-                    ResourceChangeChangeAction::Delete,
+                    RawResourceChangeChangeAction::Create,
+                    RawResourceChangeChangeAction::Delete,
                 ];
                 assert_eq!(
                     ResultAction::from_actions(&actions),
@@ -298,19 +311,19 @@ pub mod tests {
 
             #[test]
             fn no_op() {
-                let actions = vec![ResourceChangeChangeAction::NoOp];
+                let actions = vec![RawResourceChangeChangeAction::NoOp];
                 assert_eq!(ResultAction::from_actions(&actions), ResultAction::NoOp);
             }
 
             #[test]
             fn read() {
-                let actions = vec![ResourceChangeChangeAction::Read];
+                let actions = vec![RawResourceChangeChangeAction::Read];
                 assert_eq!(ResultAction::from_actions(&actions), ResultAction::Read);
             }
 
             #[test]
             fn update() {
-                let actions = vec![ResourceChangeChangeAction::Update];
+                let actions = vec![RawResourceChangeChangeAction::Update];
                 assert_eq!(ResultAction::from_actions(&actions), ResultAction::Update);
             }
 
@@ -421,7 +434,7 @@ pub mod tests {
 
             #[test]
             fn invalid_json() {
-                let plan = Plan::from_str("invalid json");
+                let plan = RawPlan::from_str("invalid json");
                 assert_eq!(
                     plan.unwrap_err().message,
                     "Failed to parse plan. expected value at line 1 column 1"
@@ -435,7 +448,7 @@ pub mod tests {
             #[test]
             fn full() {
                 let path = utils::test::get_test_data_file_path("plans/artificial/full.json");
-                Plan::from_file(&path).unwrap();
+                RawPlan::from_file(&path).unwrap();
             }
 
             #[test]
@@ -443,12 +456,12 @@ pub mod tests {
                 let path = utils::test::get_test_data_file_path(
                     "plans/artificial/no-resource-changes.json",
                 );
-                Plan::from_file(&path).unwrap();
+                RawPlan::from_file(&path).unwrap();
             }
 
             #[test]
             fn invalid_path() {
-                let plan = Plan::from_file("invalid path");
+                let plan = RawPlan::from_file("invalid path");
                 assert_eq!(
                     plan.unwrap_err().message,
                     "Failed to read file(invalid path). No such file or directory (os error 2)"
@@ -458,7 +471,7 @@ pub mod tests {
             #[test]
             fn invalid_json() {
                 let path = utils::test::get_test_data_file_path("plans/artificial/invalid.json");
-                let plan = Plan::from_file(&path);
+                let plan = RawPlan::from_file(&path);
                 assert_eq!(
                     plan.unwrap_err().message,
                     "Failed to parse file(tests/data/plans/artificial/invalid.json). Failed to parse plan. invalid type: string \"invalid\", expected a sequence at line 2 column 31"
