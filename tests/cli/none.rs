@@ -8,7 +8,8 @@ fn default() -> Result<(), Box<dyn std::error::Error>> {
     cmd.assert().failure();
     cmd.assert().code(64);
     cmd.assert().stdout("");
-    cmd.assert().stderr("No command provided\n");
+    cmd.assert()
+        .stderr("No command provided. entity not found\n");
 
     Ok(())
 }

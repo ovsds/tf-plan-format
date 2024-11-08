@@ -10,7 +10,12 @@ fn main() {
         Ok(()) => {}
         Err(e) => {
             writeln!(stderr, "{e}").unwrap();
-            std::process::exit(e.exit_code);
+            match e.error_type {
+                tf_plan_format::types::ErrorType::Default => std::process::exit(exitcode::USAGE),
+                tf_plan_format::types::ErrorType::Command { exit_code } => {
+                    std::process::exit(exit_code)
+                }
+            }
         }
     }
 }

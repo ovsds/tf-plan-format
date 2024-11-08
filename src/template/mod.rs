@@ -10,12 +10,14 @@ pub enum Engine {
 }
 
 impl FromStr for Engine {
-    type Err = ();
+    type Err = types::Error;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s {
             "tera" => Ok(Engine::Tera),
-            _ => Err(()),
+            _ => Err(types::Error::default(format!(
+                "Invalid template engine: {s}"
+            ))),
         }
     }
 }
@@ -42,7 +44,8 @@ mod tests {
 
         #[test]
         fn invalid() {
-            assert_eq!(Err(()), "invalid".parse::<Engine>());
+            let result = "invalid".parse::<Engine>();
+            assert_eq!(true, result.is_err());
         }
     }
 

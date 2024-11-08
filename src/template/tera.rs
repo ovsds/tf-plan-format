@@ -220,9 +220,9 @@ pub fn render(data: &tf::Data, template: &str) -> Result<String, types::Error> {
     match tera.add_raw_template(template_name, template) {
         Ok(()) => {}
         Err(e) => {
-            return Err(types::Error::inherit(
-                &e,
-                &format!("Failed to add template({template})"),
+            return Err(types::Error::chain(
+                format!("Failed to add template({template})"),
+                e,
             ));
         }
     }
@@ -232,9 +232,9 @@ pub fn render(data: &tf::Data, template: &str) -> Result<String, types::Error> {
 
     match tera.render(template_name, &context) {
         Ok(result) => Ok(result),
-        Err(e) => Err(types::Error::inherit(
-            &e,
-            &format!("Failed to render template({template})"),
+        Err(e) => Err(types::Error::chain(
+            format!("Failed to render template({template})"),
+            e,
         )),
     }
 }
@@ -542,8 +542,8 @@ string: "string""#;
             let result = render(&data, "{{ incorrect_data }}").unwrap_err();
 
             assert_eq!(
-                result.message,
-                "Failed to render template({{ incorrect_data }}). Failed to render 'template'"
+                result.full_message(),
+                "Failed to render template({{ incorrect_data }}). Failed to render 'template'. Variable `incorrect_data` not found in context while rendering 'template'"
             );
         }
     }

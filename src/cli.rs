@@ -52,7 +52,7 @@ pub fn root(
     command: &Option<Commands>,
     stdout: impl std::io::Write,
     stderr: impl std::io::Write,
-) -> Result<(), types::CommandError> {
+) -> Result<(), types::Error> {
     match command {
         Some(Commands::Custom {
             engine,
@@ -69,17 +69,21 @@ fn custom(
     template: &str,
     files: &[String],
     mut stdout: impl std::io::Write,
-) -> Result<(), types::CommandError> {
-    let engine = template::Engine::from_str(engine).map_err(|()| {
-        types::CommandError::new(format!("Invalid engine({engine})"), exitcode::USAGE)
+) -> Result<(), types::Error> {
+    let engine = template::Engine::from_str(engine).map_err(|e| {
+        types::Error::command(format!("Invalid engine({engine})"), exitcode::USAGE, e)
     })?;
 
     let data = tf::Data::from_files(files).map_err(|e| {
-        types::CommandError::inherit(e, &"Failed to parse plan".to_string(), exitcode::USAGE)
+        types::Error::command("Failed to parse plan".to_string(), exitcode::DATAERR, e)
     })?;
 
     let result = template::render(&engine, &data, template).map_err(|e| {
-        types::CommandError::inherit(e, &"Failed to render template".to_string(), exitcode::USAGE)
+        types::Error::command(
+            "Failed to render template".to_string(),
+            exitcode::DATAERR,
+            e,
+        )
     })?;
 
     writeln!(stdout, "{result}").unwrap();
@@ -87,12 +91,12 @@ fn custom(
     Ok(())
 }
 
-fn github(files: &[String], mut stdout: impl std::io::Write) -> Result<(), types::CommandError> {
+fn github(files: &[String], mut stdout: impl std::io::Write) -> Result<(), types::Error> {
     let engine = template::Engine::Tera;
     let template = template::tera::GITHUB_MARKDOWN_TEMPLATE;
 
     let data = tf::Data::from_files(files).map_err(|e| {
-        types::CommandError::inherit(e, &"Failed to parse plan".to_string(), exitcode::USAGE)
+        types::Error::command("Failed to parse plan".to_string(), exitcode::DATAERR, e)
     })?;
 
     // Should never fail as the template is hardcoded
@@ -106,9 +110,10 @@ fn github(files: &[String], mut stdout: impl std::io::Write) -> Result<(), types
 fn none(
     mut _stdout: impl std::io::Write,
     mut _stderr: impl std::io::Write,
-) -> Result<(), types::CommandError> {
-    Err(types::CommandError::new(
+) -> Result<(), types::Error> {
+    Err(types::Error::command(
         "No command provided".to_string(),
         exitcode::USAGE,
+        std::io::Error::from(std::io::ErrorKind::NotFound),
     ))
 }

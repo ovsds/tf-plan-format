@@ -43,7 +43,7 @@ impl FromStr for RawResourceChangeChangeAction {
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match serde_json::from_str::<RawResourceChangeChangeAction>(format!("\"{s}\"").as_str()) {
             Ok(action) => Ok(action),
-            Err(e) => Err(types::Error::new(format!("Failed to parse action. {e}"))),
+            Err(e) => Err(types::Error::chain("Failed to parse action".to_string(), e)),
         }
     }
 }
@@ -88,7 +88,7 @@ impl Action {
             match RawResourceChangeChangeAction::from_str(action) {
                 Ok(action) => parsed_actions.push(action),
                 Err(_) => {
-                    return Err(types::Error::new(format!(
+                    return Err(types::Error::default(format!(
                         "Failed to parse action({action})"
                     )))
                 }
@@ -136,10 +136,7 @@ impl FromStr for RawPlan {
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match serde_json::from_str::<RawPlan>(s) {
             Ok(plan) => Ok(plan),
-            Err(e) => Err(types::Error::inherit(
-                &e,
-                &"Failed to parse plan".to_string(),
-            )),
+            Err(e) => Err(types::Error::chain("Failed to parse plan".to_string(), e)),
         }
     }
 }
@@ -149,9 +146,9 @@ impl RawPlan {
     /// Returns an error if the file cannot be read or parsed
     pub fn from_file(path: &str) -> Result<Self, types::Error> {
         let raw_file = std::fs::read_to_string(path)
-            .map_err(|e| types::Error::inherit(&e, &format!("Failed to read file({path})")))?;
+            .map_err(|e| types::Error::chain(format!("Failed to read file({path})"), e))?;
         RawPlan::from_str(&raw_file)
-            .map_err(|e| types::Error::inherit(&e, &format!("Failed to parse file({path})")))
+            .map_err(|e| types::Error::chain(format!("Failed to parse file({path})"), e))
     }
 }
 
@@ -219,31 +216,28 @@ impl Data {
         let mut plans: std::collections::HashMap<String, Plan> = std::collections::HashMap::new();
         for path_glob in paths {
             let glob = glob::glob(path_glob).map_err(|e| {
-                types::Error::inherit(
-                    &e,
-                    &format!("Failed to read file({path_glob}), invalid glob"),
-                )
+                types::Error::chain(format!("Failed to read file({path_glob}), invalid glob"), e)
             })?;
 
             let mut file_count = 0;
             for path in glob {
                 let path_buf = path.map_err(|e| {
-                    types::Error::inherit(&e, &format!("Failed to read file({path_glob})"))
+                    types::Error::chain(format!("Failed to read file({path_glob})"), e)
                 })?;
                 let Some(path) = path_buf.to_str() else {
-                    return Err(types::Error::new(format!(
+                    return Err(types::Error::default(format!(
                         "Failed to read file({path_glob}), invalid path"
                     )));
                 };
                 let plan = RawPlan::from_file(path)
-                    .map_err(|e| types::Error::new(format!("Failed to read file({path}). {e}")))?;
+                    .map_err(|e| types::Error::chain(format!("Failed to read file({path})"), e))?;
                 plans.insert(path.to_string(), Plan::from_raw(plan));
 
                 file_count += 1;
             }
 
             if file_count == 0 {
-                return Err(types::Error::new(format!(
+                return Err(types::Error::default(format!(
                     "Failed to read file({path_glob}). No files found"
                 )));
             }
@@ -433,7 +427,7 @@ pub mod tests {
             fn invalid() {
                 let action = Action::from_strings(&vec!["invalid".to_string()]);
                 assert_eq!(
-                    action.unwrap_err().message,
+                    action.unwrap_err().to_string(),
                     "Failed to parse action(invalid)"
                 );
             }
@@ -470,7 +464,7 @@ pub mod tests {
             fn invalid_json() {
                 let plan = RawPlan::from_str("invalid json");
                 assert_eq!(
-                    plan.unwrap_err().message,
+                    plan.unwrap_err().full_message(),
                     "Failed to parse plan. expected value at line 1 column 1"
                 );
             }
@@ -497,7 +491,7 @@ pub mod tests {
             fn invalid_path() {
                 let plan = RawPlan::from_file("invalid path");
                 assert_eq!(
-                    plan.unwrap_err().message,
+                    plan.unwrap_err().full_message(),
                     "Failed to read file(invalid path). No such file or directory (os error 2)"
                 );
             }
@@ -507,7 +501,7 @@ pub mod tests {
                 let path = utils::test::get_test_data_file_path("plans/artificial/invalid.json");
                 let plan = RawPlan::from_file(&path);
                 assert_eq!(
-                    plan.unwrap_err().message,
+                    plan.unwrap_err().full_message(),
                     "Failed to parse file(tests/data/plans/artificial/invalid.json). Failed to parse plan. invalid type: string \"invalid\", expected a sequence at line 2 column 31"
                 );
             }
@@ -539,7 +533,7 @@ pub mod tests {
                 let files = vec!["*****".to_string()];
                 let data = Data::from_files(&files);
                 assert_eq!(
-                    data.unwrap_err().message,
+                    data.unwrap_err().full_message(),
                     "Failed to read file(*****), invalid glob. Pattern syntax error near position 2: wildcards are either regular `*` or recursive `**`"
                 );
             }
@@ -548,7 +542,7 @@ pub mod tests {
             fn no_files() {
                 let data = Data::from_files(&["invalid path".to_string()]);
                 assert_eq!(
-                    data.unwrap_err().message,
+                    data.unwrap_err().to_string(),
                     "Failed to read file(invalid path). No files found"
                 );
             }
