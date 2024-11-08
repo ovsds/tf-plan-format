@@ -1,5 +1,6 @@
 use crate::utils;
 use assert_cmd::prelude::*;
+use predicates::prelude::*;
 use std::process::Command;
 
 #[test]
@@ -64,7 +65,8 @@ fn invalid_engine() -> Result<(), Box<dyn std::error::Error>> {
 
     cmd.assert().failure();
     cmd.assert().stdout("");
-    cmd.assert().stderr("Invalid engine(invalid)\n");
+    cmd.assert()
+        .stderr("Invalid engine(invalid). Invalid template engine: invalid\n");
     cmd.assert().code(64);
 
     Ok(())
@@ -85,7 +87,7 @@ fn invalid_files() -> Result<(), Box<dyn std::error::Error>> {
     cmd.assert().stdout("");
     cmd.assert()
         .stderr("Failed to parse plan. Failed to read file(invalid). No files found\n");
-    cmd.assert().code(64);
+    cmd.assert().code(65);
 
     Ok(())
 }
@@ -105,8 +107,10 @@ fn test_invalid_template() -> Result<(), Box<dyn std::error::Error>> {
 
     cmd.assert().failure();
     cmd.assert().stdout("");
-    cmd.assert().stderr("Failed to render template. Failed to add template({{invalid). Failed to parse \'template\'\n");
-    cmd.assert().code(64);
+    cmd.assert().stderr(
+        predicate::str::starts_with("Failed to render template. Failed to add template({{invalid). Failed to parse \'template\'")
+    );
+    cmd.assert().code(65);
 
     Ok(())
 }

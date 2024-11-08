@@ -1,51 +1,82 @@
+use std::convert::Into;
+
+#[derive(Debug)]
+pub enum ErrorType {
+    Default,
+    Command { exit_code: exitcode::ExitCode },
+}
+
 #[derive(Debug)]
 pub struct Error {
-    pub message: String,
+    pub error_type: ErrorType,
+    message: String,
+    source: Option<Box<dyn std::error::Error + Sync + Send>>,
 }
 
 impl std::fmt::Display for Error {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        write!(f, "{}", self.message)
+        match &self.error_type {
+            ErrorType::Command { exit_code: _ } => write!(f, "{}", self.full_message()),
+            ErrorType::Default => write!(f, "{}", self.message),
+        }
     }
 }
 
 impl Error {
     #[must_use]
-    pub fn new(message: String) -> Self {
-        Self { message }
-    }
-
-    #[must_use]
-    pub fn inherit(parent: impl std::fmt::Display, message: &String) -> Self {
+    pub fn default(message: String) -> Self {
         Self {
-            message: format!("{message}. {parent}"),
+            error_type: ErrorType::Default,
+            message,
+            source: None,
         }
     }
-}
-
-pub struct CommandError {
-    pub message: String,
-    pub exit_code: i32,
-}
-
-impl std::fmt::Display for CommandError {
-    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        write!(f, "{}", self.message)
-    }
-}
-
-impl CommandError {
-    #[must_use]
-    pub fn new(message: String, exit_code: i32) -> Self {
-        Self { message, exit_code }
-    }
 
     #[must_use]
-    pub fn inherit(parent: impl std::fmt::Display, message: &String, exit_code: i32) -> Self {
+    pub fn chain<T: Into<Box<dyn std::error::Error + Sync + Send>>>(
+        message: String,
+        source: T,
+    ) -> Self {
         Self {
-            message: format!("{message}. {parent}"),
-            exit_code,
+            error_type: ErrorType::Default,
+            message,
+            source: Some(source.into()),
         }
+    }
+
+    #[must_use]
+    pub fn command<T: Into<Box<dyn std::error::Error + Sync + Send>>>(
+        message: String,
+        exit_code: exitcode::ExitCode,
+        source: T,
+    ) -> Self {
+        Self {
+            error_type: ErrorType::Command { exit_code },
+            message,
+            source: Some(source.into()),
+        }
+    }
+
+    #[must_use]
+    pub fn full_message(&self) -> String {
+        use std::error::Error;
+
+        let mut message = self.message.clone();
+        let mut cause = self.source();
+        while let Some(error) = cause {
+            message = format!("{message}. {error}");
+            cause = error.source();
+        }
+
+        message
+    }
+}
+
+impl std::error::Error for Error {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        self.source
+            .as_ref()
+            .map(|c| &**c as &(dyn std::error::Error + 'static))
     }
 }
 
@@ -58,53 +89,32 @@ mod tests {
 
         #[test]
         fn display() {
-            let error = Error {
-                message: "message".to_string(),
-            };
-
+            let error = Error::default("message".to_string());
             assert_eq!("message", format!("{}", error));
         }
 
         #[test]
-        fn new() {
-            let error = Error::new("message".to_string());
-            assert_eq!("message", error.message);
+        fn chain() {
+            let error = Error::chain("message".to_string(), tera::Error::msg("source"));
+            assert_eq!("message. source", format!("{}", error.full_message()));
         }
 
         #[test]
-        fn inherit() {
-            let error = Error::new("message".to_string());
-            let error = Error::inherit(error, &"inherited".to_string());
-            assert_eq!("inherited. message", error.message);
-        }
-    }
+        fn chain_multiple() {
+            let grandparent = Error::default("grandparent".to_string());
+            let parent = Error::chain("parent".to_string(), grandparent);
+            let error = Error::chain("child".to_string(), parent);
 
-    mod command_error {
-        use super::*;
-
-        #[test]
-        fn display() {
-            let error = CommandError {
-                message: "message".to_string(),
-                exit_code: 1,
-            };
-
-            assert_eq!("message", format!("{}", error));
+            assert_eq!(
+                "child. parent. grandparent",
+                format!("{}", error.full_message())
+            );
         }
 
         #[test]
-        fn new() {
-            let error = CommandError::new("message".to_string(), 1);
-            assert_eq!("message", error.message);
-            assert_eq!(1, error.exit_code);
-        }
-
-        #[test]
-        fn inherit() {
-            let error = CommandError::new("message".to_string(), 1);
-            let error = CommandError::inherit(error, &"inherited".to_string(), 2);
-            assert_eq!("inherited. message", error.message);
-            assert_eq!(2, error.exit_code);
+        fn command() {
+            let error = Error::command("message".to_string(), 1, tera::Error::msg("source"));
+            assert_eq!("message. source", format!("{}", error.full_message()));
         }
     }
 }
