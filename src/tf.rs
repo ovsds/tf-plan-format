@@ -16,7 +16,7 @@ pub enum RawValue {
 
 pub type ValueMap = std::collections::HashMap<String, RawValue>;
 
-#[derive(Serialize, Deserialize, Debug, PartialEq)]
+#[derive(Serialize, Deserialize, Debug, PartialEq, Clone)]
 #[serde(untagged)]
 pub enum BoolValue {
     Boolean(bool),
@@ -26,7 +26,7 @@ pub enum BoolValue {
 
 pub type BoolValueMap = std::collections::HashMap<String, BoolValue>;
 
-#[derive(Serialize, Deserialize, Debug, PartialEq)]
+#[derive(Serialize, Deserialize, Debug, PartialEq, Clone)]
 #[serde(rename_all = "lowercase")]
 pub enum RawResourceChangeChangeAction {
     Create,
@@ -48,8 +48,8 @@ impl FromStr for RawResourceChangeChangeAction {
     }
 }
 
-#[derive(Debug, PartialEq)]
-pub enum ResultAction {
+#[derive(Deserialize, Serialize, Debug, PartialEq, Clone, Ord, PartialOrd, Eq)]
+pub enum Action {
     Create,
     DeleteCreate,
     Read,
@@ -59,30 +59,30 @@ pub enum ResultAction {
     Unknown,
 }
 
-impl ResultAction {
+impl Action {
     #[must_use]
-    pub fn from_actions(actions: &[RawResourceChangeChangeAction]) -> ResultAction {
+    pub fn from_actions(actions: &[RawResourceChangeChangeAction]) -> Action {
         if actions.len() == 2
             && actions.contains(&RawResourceChangeChangeAction::Create)
             && actions.contains(&RawResourceChangeChangeAction::Delete)
         {
-            return ResultAction::DeleteCreate;
+            return Action::DeleteCreate;
         };
         if actions.len() == 1 {
             return match actions[0] {
-                RawResourceChangeChangeAction::Create => ResultAction::Create,
-                RawResourceChangeChangeAction::Read => ResultAction::Read,
-                RawResourceChangeChangeAction::Update => ResultAction::Update,
-                RawResourceChangeChangeAction::Delete => ResultAction::Delete,
-                RawResourceChangeChangeAction::NoOp => ResultAction::NoOp,
+                RawResourceChangeChangeAction::Create => Action::Create,
+                RawResourceChangeChangeAction::Read => Action::Read,
+                RawResourceChangeChangeAction::Update => Action::Update,
+                RawResourceChangeChangeAction::Delete => Action::Delete,
+                RawResourceChangeChangeAction::NoOp => Action::NoOp,
             };
         }
-        ResultAction::Unknown
+        Action::Unknown
     }
 
     /// # Errors
     /// Returns an error if any of the actions cannot be parsed
-    pub fn from_strings(actions: &Vec<String>) -> Result<ResultAction, types::Error> {
+    pub fn from_strings(actions: &Vec<String>) -> Result<Action, types::Error> {
         let mut parsed_actions = Vec::new();
         for action in actions {
             match RawResourceChangeChangeAction::from_str(action) {
@@ -94,11 +94,11 @@ impl ResultAction {
                 }
             }
         }
-        Ok(ResultAction::from_actions(&parsed_actions))
+        Ok(Action::from_actions(&parsed_actions))
     }
 }
 
-#[derive(Serialize, Deserialize, Debug, PartialEq)]
+#[derive(Serialize, Deserialize, Debug, PartialEq, Clone)]
 pub struct RawResourceChangeChange {
     pub actions: Vec<RawResourceChangeChangeAction>,
     pub before: Option<ValueMap>,
@@ -108,11 +108,11 @@ pub struct RawResourceChangeChange {
     pub after_sensitive: Option<BoolValue>,
 }
 
-#[derive(Serialize, Deserialize, Debug, PartialEq)]
+#[derive(Serialize, Deserialize, Debug, PartialEq, Clone)]
 pub struct RawResourceChange {
     pub address: String,
     // mode: String,
-    #[serde(rename = "type")]
+    // #[serde(rename = "type")]
     // type_: String,
     pub name: String,
     // provider_name: String,
@@ -156,14 +156,54 @@ impl RawPlan {
 }
 
 #[derive(Serialize, Debug, PartialEq)]
+pub struct Change {
+    pub address: String,
+    pub name: String,
+    pub action: Action,
+    pub raw: RawResourceChange,
+}
+
+impl Change {
+    #[must_use]
+    pub fn from_raw(raw: RawResourceChange) -> Self {
+        Change {
+            address: raw.address.clone(),
+            name: raw.name.clone(),
+            action: Action::from_actions(&raw.change.actions),
+            raw,
+        }
+    }
+}
+
+#[derive(Serialize, Debug, PartialEq)]
 pub struct Plan {
+    changes: Vec<Change>,
+    unique_actions: Vec<Action>,
     raw: RawPlan,
 }
 
 impl Plan {
     #[must_use]
     pub fn from_raw(raw: RawPlan) -> Self {
-        Plan { raw }
+        let mut changes: Vec<Change> = Vec::new();
+        if let Some(resource_changes) = &raw.resource_changes {
+            for raw_change in resource_changes {
+                changes.push(Change::from_raw(raw_change.clone()));
+            }
+        }
+        let mut unique_actions: Vec<Action> = Vec::new();
+        for change in &changes {
+            if !unique_actions.contains(&change.action) {
+                unique_actions.push(change.action.clone());
+            }
+        }
+        unique_actions.sort();
+
+        Plan {
+            changes,
+            unique_actions,
+            raw,
+        }
     }
 }
 
@@ -280,7 +320,7 @@ pub mod tests {
         return std::fs::read_to_string(file).unwrap();
     }
 
-    mod result_action {
+    mod action {
         use super::*;
 
         mod from_actions {
@@ -288,13 +328,13 @@ pub mod tests {
             #[test]
             fn create() {
                 let actions = vec![RawResourceChangeChangeAction::Create];
-                assert_eq!(ResultAction::from_actions(&actions), ResultAction::Create);
+                assert_eq!(Action::from_actions(&actions), Action::Create);
             }
 
             #[test]
             fn delete() {
                 let actions = vec![RawResourceChangeChangeAction::Delete];
-                assert_eq!(ResultAction::from_actions(&actions), ResultAction::Delete);
+                assert_eq!(Action::from_actions(&actions), Action::Delete);
             }
 
             #[test]
@@ -303,34 +343,31 @@ pub mod tests {
                     RawResourceChangeChangeAction::Create,
                     RawResourceChangeChangeAction::Delete,
                 ];
-                assert_eq!(
-                    ResultAction::from_actions(&actions),
-                    ResultAction::DeleteCreate
-                );
+                assert_eq!(Action::from_actions(&actions), Action::DeleteCreate);
             }
 
             #[test]
             fn no_op() {
                 let actions = vec![RawResourceChangeChangeAction::NoOp];
-                assert_eq!(ResultAction::from_actions(&actions), ResultAction::NoOp);
+                assert_eq!(Action::from_actions(&actions), Action::NoOp);
             }
 
             #[test]
             fn read() {
                 let actions = vec![RawResourceChangeChangeAction::Read];
-                assert_eq!(ResultAction::from_actions(&actions), ResultAction::Read);
+                assert_eq!(Action::from_actions(&actions), Action::Read);
             }
 
             #[test]
             fn update() {
                 let actions = vec![RawResourceChangeChangeAction::Update];
-                assert_eq!(ResultAction::from_actions(&actions), ResultAction::Update);
+                assert_eq!(Action::from_actions(&actions), Action::Update);
             }
 
             #[test]
             fn unknown() {
                 let actions = vec![];
-                assert_eq!(ResultAction::from_actions(&actions), ResultAction::Unknown);
+                assert_eq!(Action::from_actions(&actions), Action::Unknown);
             }
         }
 
@@ -341,63 +378,60 @@ pub mod tests {
             #[test]
             fn create() {
                 assert_eq!(
-                    ResultAction::from_strings(&vec!["create".to_string()]).unwrap(),
-                    ResultAction::Create
+                    Action::from_strings(&vec!["create".to_string()]).unwrap(),
+                    Action::Create
                 );
             }
 
             #[test]
             fn delete() {
                 assert_eq!(
-                    ResultAction::from_strings(&vec!["delete".to_string()]).unwrap(),
-                    ResultAction::Delete
+                    Action::from_strings(&vec!["delete".to_string()]).unwrap(),
+                    Action::Delete
                 );
             }
 
             #[test]
             fn delete_create() {
                 assert_eq!(
-                    ResultAction::from_strings(&vec!["create".to_string(), "delete".to_string()])
+                    Action::from_strings(&vec!["create".to_string(), "delete".to_string()])
                         .unwrap(),
-                    ResultAction::DeleteCreate
+                    Action::DeleteCreate
                 );
             }
 
             #[test]
             fn no_op() {
                 assert_eq!(
-                    ResultAction::from_strings(&vec!["no-op".to_string()]).unwrap(),
-                    ResultAction::NoOp
+                    Action::from_strings(&vec!["no-op".to_string()]).unwrap(),
+                    Action::NoOp
                 );
             }
 
             #[test]
             fn read() {
                 assert_eq!(
-                    ResultAction::from_strings(&vec!["read".to_string()]).unwrap(),
-                    ResultAction::Read
+                    Action::from_strings(&vec!["read".to_string()]).unwrap(),
+                    Action::Read
                 );
             }
 
             #[test]
             fn update() {
                 assert_eq!(
-                    ResultAction::from_strings(&vec!["update".to_string()]).unwrap(),
-                    ResultAction::Update
+                    Action::from_strings(&vec!["update".to_string()]).unwrap(),
+                    Action::Update
                 );
             }
 
             #[test]
             fn unknown() {
-                assert_eq!(
-                    ResultAction::from_strings(&vec![]).unwrap(),
-                    ResultAction::Unknown
-                );
+                assert_eq!(Action::from_strings(&vec![]).unwrap(), Action::Unknown);
             }
 
             #[test]
             fn invalid() {
-                let action = ResultAction::from_strings(&vec!["invalid".to_string()]);
+                let action = Action::from_strings(&vec!["invalid".to_string()]);
                 assert_eq!(
                     action.unwrap_err().message,
                     "Failed to parse action(invalid)"
@@ -406,7 +440,7 @@ pub mod tests {
         }
     }
 
-    mod plan {
+    mod raw_plan {
         use super::*;
 
         mod from_str {

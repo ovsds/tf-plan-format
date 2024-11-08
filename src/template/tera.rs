@@ -9,17 +9,17 @@ const INDENT_STR: &str = "  ";
 
 pub const GITHUB_MARKDOWN_TEMPLATE: &str = "
 {%- for plan_key, plan in data.plans %}<details>
-<summary>{{ render_plan_actions(plan=plan.raw) }}{{ plan_key }}</summary>
-{%- if not plan.raw.resource_changes %}
+<summary>{{ render_actions(actions=plan.unique_actions) }}{{ plan_key }}</summary>
+{%- if not plan.changes %}
 No resource changes
 {%- else %}
-{%- for resource_change in plan.raw.resource_changes %}
+{%- for change in plan.changes %}
 <details>
-<summary>{{ render_actions(actions=resource_change.change.actions) }}{{ resource_change.address }}
+<summary>{{ render_action(action=change.action) }}{{ change.raw.address }}
 </summary>
 
 ```
-{{ render_changes(change=resource_change.change) }}
+{{ render_changes(change=change.raw.change) }}
 ```
 
 </details>
@@ -30,42 +30,32 @@ No resource changes
 
 type Args = std::collections::HashMap<String, tera::Value>;
 
-fn _render_result_action(action: &tf::ResultAction) -> String {
+fn _render_action(action: &tf::Action) -> String {
     match action {
-        tf::ResultAction::Create => "✅".to_string(),
-        tf::ResultAction::Delete => "❌".to_string(),
-        tf::ResultAction::DeleteCreate => "♻️".to_string(),
-        tf::ResultAction::Update => "🔄".to_string(),
-        tf::ResultAction::NoOp => "🟰".to_string(),
-        tf::ResultAction::Read => "🔍".to_string(),
-        tf::ResultAction::Unknown => "❓".to_string(),
+        tf::Action::Create => "✅".to_string(),
+        tf::Action::Delete => "❌".to_string(),
+        tf::Action::DeleteCreate => "♻️".to_string(),
+        tf::Action::Update => "🔄".to_string(),
+        tf::Action::NoOp => "🟰".to_string(),
+        tf::Action::Read => "🔍".to_string(),
+        tf::Action::Unknown => "❓".to_string(),
     }
+}
+
+fn render_action(args: &Args) -> tera::Result<tera::Value> {
+    let action = args.get("action").ok_or("action must be present in args")?;
+    let action = tera::from_value::<tf::Action>(action.clone())?;
+
+    Ok(tera::Value::String(_render_action(&action)))
 }
 
 fn render_actions(args: &Args) -> tera::Result<tera::Value> {
-    let raw_actions = args
+    let actions = args
         .get("actions")
         .ok_or("actions must be present in args")?;
-    let actions = tera::from_value::<Vec<tf::RawResourceChangeChangeAction>>(raw_actions.clone())?;
+    let actions = tera::from_value::<Vec<tf::Action>>(actions.clone())?;
 
-    let result_action = tf::ResultAction::from_actions(&actions);
-    Ok(tera::Value::String(_render_result_action(&result_action)))
-}
-
-fn render_plan_actions(args: &Args) -> tera::Result<tera::Value> {
-    let raw_plan = args.get("plan").ok_or("plan must be present in args")?;
-    let plan = tera::from_value::<tf::RawPlan>(raw_plan.clone())?;
-
-    let mut rendered_actions: HashSet<String> = std::collections::HashSet::new();
-
-    for resource_change in plan.resource_changes.unwrap_or_default() {
-        let actions = resource_change.change.actions;
-        let result_action = tf::ResultAction::from_actions(&actions);
-
-        rendered_actions.insert(_render_result_action(&result_action));
-    }
-    let mut result: Vec<String> = rendered_actions.into_iter().collect();
-    result.sort();
+    let result: Vec<String> = actions.iter().map(_render_action).collect();
 
     Ok(tera::Value::String(result.join("")))
 }
@@ -223,8 +213,8 @@ fn render_changes(args: &Args) -> tera::Result<tera::Value> {
 pub fn render(data: &tf::Data, template: &str) -> Result<String, types::Error> {
     let mut tera = tera::Tera::default();
     tera.register_function("render_changes", render_changes);
+    tera.register_function("render_action", render_action);
     tera.register_function("render_actions", render_actions);
-    tera.register_function("render_plan_actions", render_plan_actions);
 
     let template_name = "template";
     match tera.add_raw_template(template_name, template) {
@@ -253,6 +243,58 @@ pub fn render(data: &tf::Data, template: &str) -> Result<String, types::Error> {
 mod tests {
     use super::*;
 
+    mod render_action {
+        use super::*;
+
+        fn test_with_context(context: tera::Context) -> tera::Result<String> {
+            let mut tera = tera::Tera::default();
+            tera.register_function("render_action", render_action);
+
+            tera.add_raw_template("template", "{{ render_action(action=action) }}")
+                .unwrap();
+
+            tera.render("template", &context)
+        }
+
+        fn test(action: tf::Action) -> tera::Result<String> {
+            let mut context = tera::Context::new();
+            context.insert("action", &action);
+
+            test_with_context(context)
+        }
+
+        #[test]
+        fn options() {
+            assert_eq!(test(tf::Action::Create).unwrap(), "✅");
+            assert_eq!(test(tf::Action::Delete).unwrap(), "❌");
+            assert_eq!(test(tf::Action::DeleteCreate).unwrap(), "♻️");
+            assert_eq!(test(tf::Action::Update).unwrap(), "🔄");
+            assert_eq!(test(tf::Action::NoOp).unwrap(), "🟰");
+            assert_eq!(test(tf::Action::Read).unwrap(), "🔍");
+            assert_eq!(test(tf::Action::Unknown).unwrap(), "❓");
+        }
+
+        #[test]
+        fn not_in_args() {
+            let context = tera::Context::new();
+            let mut tera = tera::Tera::default();
+            tera.register_function("render_action", render_action);
+            tera.add_raw_template("template", "{{ render_action() }}")
+                .unwrap();
+
+            tera.render("template", &context).unwrap_err();
+        }
+
+        #[test]
+        fn invalid_action() {
+            let action = "invalid".to_string();
+            let mut context = tera::Context::new();
+            context.insert("action", &action);
+
+            test_with_context(context).unwrap_err();
+        }
+    }
+
     mod render_actions {
         use super::*;
 
@@ -266,7 +308,7 @@ mod tests {
             tera.render("template", &context)
         }
 
-        fn test(actions: Vec<tf::RawResourceChangeChangeAction>) -> tera::Result<String> {
+        fn test(actions: Vec<tf::Action>) -> tera::Result<String> {
             let mut context = tera::Context::new();
             context.insert("actions", &actions);
 
@@ -274,58 +316,23 @@ mod tests {
         }
 
         #[test]
-        fn create() {
-            let actions = vec![tf::RawResourceChangeChangeAction::Create];
-            assert_eq!(test(actions).unwrap(), "✅");
-        }
-
-        #[test]
-        fn delete() {
-            let actions = vec![tf::RawResourceChangeChangeAction::Delete];
-            assert_eq!(test(actions).unwrap(), "❌");
-        }
-
-        #[test]
-        fn delete_create() {
+        fn default() {
             let actions = vec![
-                tf::RawResourceChangeChangeAction::Delete,
-                tf::RawResourceChangeChangeAction::Create,
+                tf::Action::Create,
+                tf::Action::Delete,
+                tf::Action::DeleteCreate,
+                tf::Action::Update,
+                tf::Action::NoOp,
+                tf::Action::Read,
+                tf::Action::Unknown,
             ];
-            assert_eq!(test(actions).unwrap(), "♻️");
+            assert_eq!(test(actions).unwrap(), "✅❌♻\u{fe0f}🔄🟰🔍❓");
         }
 
         #[test]
-        fn create_delete() {
-            let actions = vec![
-                tf::RawResourceChangeChangeAction::Create,
-                tf::RawResourceChangeChangeAction::Delete,
-            ];
-            assert_eq!(test(actions).unwrap(), "♻️");
-        }
-
-        #[test]
-        fn update() {
-            let actions = vec![tf::RawResourceChangeChangeAction::Update];
-            assert_eq!(test(actions).unwrap(), "🔄");
-        }
-
-        #[test]
-        fn no_op() {
-            let actions = vec![tf::RawResourceChangeChangeAction::NoOp];
-            assert_eq!(test(actions).unwrap(), "🟰");
-        }
-
-        #[test]
-        fn read() {
-            let actions: Vec<tf::RawResourceChangeChangeAction> =
-                vec![tf::RawResourceChangeChangeAction::Read];
-            assert_eq!(test(actions).unwrap(), "🔍");
-        }
-
-        #[test]
-        fn unknown() {
-            let actions: Vec<tf::RawResourceChangeChangeAction> = vec![];
-            assert_eq!(test(actions).unwrap(), "❓");
+        fn no_actions() {
+            let actions = vec![];
+            assert_eq!(test(actions).unwrap(), "");
         }
 
         #[test]
@@ -341,101 +348,9 @@ mod tests {
 
         #[test]
         fn invalid_actions() {
-            let actions = vec!["invalid".to_string()];
+            let actions = "invalid".to_string();
             let mut context = tera::Context::new();
             context.insert("actions", &actions);
-
-            test_with_context(context).unwrap_err();
-        }
-    }
-
-    mod render_plan_actions {
-        use super::*;
-
-        fn test_with_context(context: tera::Context) -> tera::Result<String> {
-            let mut tera = tera::Tera::default();
-            tera.register_function("render_plan_actions", render_plan_actions);
-
-            tera.add_raw_template("template", "{{ render_plan_actions(plan=plan) }}")
-                .unwrap();
-
-            tera.render("template", &context)
-        }
-
-        fn test(plan: tf::RawPlan) -> tera::Result<String> {
-            let mut context = tera::Context::new();
-            context.insert("plan", &plan);
-
-            test_with_context(context)
-        }
-
-        fn get_resource_change(
-            actions: Vec<tf::RawResourceChangeChangeAction>,
-        ) -> tf::RawResourceChange {
-            tf::RawResourceChange {
-                address: "address".to_string(),
-                name: "name".to_string(),
-                change: tf::RawResourceChangeChange {
-                    actions,
-                    before: None,
-                    after: None,
-                    before_sensitive: None,
-                    after_sensitive: None,
-                },
-            }
-        }
-
-        #[test]
-        fn default() {
-            let plan = tf::RawPlan {
-                resource_changes: Some(vec![
-                    get_resource_change(vec![tf::RawResourceChangeChangeAction::Create]),
-                    get_resource_change(vec![tf::RawResourceChangeChangeAction::Delete]),
-                    get_resource_change(vec![
-                        tf::RawResourceChangeChangeAction::Delete,
-                        tf::RawResourceChangeChangeAction::Create,
-                    ]),
-                    get_resource_change(vec![tf::RawResourceChangeChangeAction::Update]),
-                    get_resource_change(vec![tf::RawResourceChangeChangeAction::NoOp]),
-                    get_resource_change(vec![tf::RawResourceChangeChangeAction::Read]),
-                    get_resource_change(vec![]),
-                ]),
-            };
-            assert_eq!(test(plan).unwrap(), "♻\u{fe0f}✅❌❓🔄🔍🟰");
-        }
-
-        #[test]
-        fn no_resource_changes() {
-            let plan = tf::RawPlan {
-                resource_changes: None,
-            };
-            assert_eq!(test(plan).unwrap(), "");
-        }
-
-        #[test]
-        fn empty_resource_changes() {
-            let plan = tf::RawPlan {
-                resource_changes: Some(vec![]),
-            };
-            assert_eq!(test(plan).unwrap(), "");
-        }
-
-        #[test]
-        fn not_in_args() {
-            let context = tera::Context::new();
-            let mut tera = tera::Tera::default();
-            tera.register_function("render_plan_actions", render_plan_actions);
-            tera.add_raw_template("template", "{{ render_plan_actions() }}")
-                .unwrap();
-
-            tera.render("template", &context).unwrap_err();
-        }
-
-        #[test]
-        fn invalid_plan() {
-            let plan = "invalid".to_string();
-            let mut context = tera::Context::new();
-            context.insert("plan", &plan);
 
             test_with_context(context).unwrap_err();
         }
