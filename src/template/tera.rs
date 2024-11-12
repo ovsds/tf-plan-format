@@ -60,15 +60,27 @@ fn render_actions(args: &Args) -> tera::Result<tera::Value> {
     Ok(tera::Value::String(result.join("")))
 }
 
-fn _render_plaintext(value: &tf::RawValue) -> String {
-    format!("{}", tera::to_value(value).unwrap())
+fn _render_plaintext(value: &tf::Value) -> String {
+    match value {
+        tf::Value::Sensitive => "sensitive".to_string(),
+        tf::Value::String(value) => format!("{}", tera::to_value(value).unwrap()),
+        tf::Value::Integer(value) => format!("{}", tera::to_value(value).unwrap()),
+        tf::Value::Float(value) => format!("{}", tera::to_value(value).unwrap()),
+        tf::Value::Boolean(value) => format!("{}", tera::to_value(value).unwrap()),
+        tf::Value::Array(value) => format!(
+            "[{}]",
+            value
+                .iter()
+                .map(_render_plaintext)
+                .collect::<Vec<String>>()
+                .join(", ")
+        ),
+        tf::Value::Object(value) => format!("{}", tera::to_value(value).unwrap()),
+        tf::Value::Null => "null".to_string(),
+    }
 }
 
-fn _render_unchanged_plaintext(
-    key: &str,
-    value: &tf::RawValue,
-    indent_count: usize,
-) -> Vec<String> {
+fn _render_unchanged_plaintext(key: &str, value: &tf::Value, indent_count: usize) -> Vec<String> {
     vec![format!(
         "{}{key}: {}",
         INDENT_STR.repeat(indent_count),
@@ -77,7 +89,7 @@ fn _render_unchanged_plaintext(
 }
 
 fn _render_unchanged_hashmap_value(
-    value: &std::collections::HashMap<String, tf::RawValue>,
+    value: &std::collections::HashMap<String, tf::Value>,
     indent_count: usize,
 ) -> Vec<String> {
     let mut result: Vec<String> = Vec::new();
@@ -89,7 +101,7 @@ fn _render_unchanged_hashmap_value(
 
 fn _render_unchanged_hashmap(
     key: &str,
-    value: &std::collections::HashMap<String, tf::RawValue>,
+    value: &std::collections::HashMap<String, tf::Value>,
     indent_count: usize,
 ) -> Vec<String> {
     let mut result: Vec<String> = Vec::new();
@@ -98,17 +110,17 @@ fn _render_unchanged_hashmap(
     result
 }
 
-fn _render_unchanged(key: &str, value: &tf::RawValue, indent_count: usize) -> Vec<String> {
+fn _render_unchanged(key: &str, value: &tf::Value, indent_count: usize) -> Vec<String> {
     match value {
-        tf::RawValue::Object(map) => _render_unchanged_hashmap(key, map, indent_count),
+        tf::Value::Object(map) => _render_unchanged_hashmap(key, map, indent_count),
         _ => _render_unchanged_plaintext(key, value, indent_count),
     }
 }
 
 fn _render_changed_plaintext(
     key: &str,
-    before_value: &tf::RawValue,
-    after_value: &tf::RawValue,
+    before_value: &tf::Value,
+    after_value: &tf::Value,
     indent_count: usize,
 ) -> Vec<String> {
     vec![format!(
@@ -120,8 +132,8 @@ fn _render_changed_plaintext(
 }
 
 fn _render_changed_hashmap_value(
-    before: &std::collections::HashMap<String, tf::RawValue>,
-    after: &std::collections::HashMap<String, tf::RawValue>,
+    before: &std::collections::HashMap<String, tf::Value>,
+    after: &std::collections::HashMap<String, tf::Value>,
     indent_count: usize,
 ) -> Vec<String> {
     let mut keys: HashSet<String> = HashSet::new();
@@ -130,8 +142,8 @@ fn _render_changed_hashmap_value(
 
     let mut result: Vec<String> = Vec::new();
     for key in keys.iter().sorted() {
-        let before_value = before.get(key).unwrap_or(&tf::RawValue::Null);
-        let after_value = after.get(key).unwrap_or(&tf::RawValue::Null);
+        let before_value = before.get(key).unwrap_or(&tf::Value::Null);
+        let after_value = after.get(key).unwrap_or(&tf::Value::Null);
         result.extend(_render_changed(
             key,
             before_value,
@@ -144,8 +156,8 @@ fn _render_changed_hashmap_value(
 
 fn _render_changed_hashmap(
     key: &str,
-    before: &std::collections::HashMap<String, tf::RawValue>,
-    after: &std::collections::HashMap<String, tf::RawValue>,
+    before: &std::collections::HashMap<String, tf::Value>,
+    after: &std::collections::HashMap<String, tf::Value>,
     indent_count: usize,
 ) -> Vec<String> {
     let mut result: Vec<String> = Vec::new();
@@ -160,18 +172,18 @@ fn _render_changed_hashmap(
 
 fn _render_changed(
     key: &str,
-    before_value: &tf::RawValue,
-    after_value: &tf::RawValue,
+    before_value: &tf::Value,
+    after_value: &tf::Value,
     indent_count: usize,
 ) -> Vec<String> {
     match (before_value, after_value) {
-        (tf::RawValue::Object(before), tf::RawValue::Object(after)) => {
+        (tf::Value::Object(before), tf::Value::Object(after)) => {
             _render_changed_hashmap(key, before, after, indent_count)
         }
-        (tf::RawValue::Null, tf::RawValue::Object(after)) => {
+        (tf::Value::Null, tf::Value::Object(after)) => {
             _render_unchanged_hashmap(key, after, indent_count)
         }
-        (tf::RawValue::Object(before), tf::RawValue::Null) => {
+        (tf::Value::Object(before), tf::Value::Null) => {
             _render_unchanged_hashmap(key, before, indent_count)
         }
         (_, _) => {
@@ -384,27 +396,27 @@ mod tests {
             let mut map = std::collections::HashMap::new();
             map.insert(
                 "string".to_string(),
-                tf::RawValue::String("string".to_string()),
+                tf::Value::String("string".to_string()),
             );
-            map.insert("integer".to_string(), tf::RawValue::Integer(42));
-            map.insert("float".to_string(), tf::RawValue::Float(42.1));
-            map.insert("bool".to_string(), tf::RawValue::Boolean(true));
+            map.insert("integer".to_string(), tf::Value::Integer(42));
+            map.insert("float".to_string(), tf::Value::Float(42.1));
+            map.insert("bool".to_string(), tf::Value::Boolean(true));
             map.insert(
                 "array".to_string(),
-                tf::RawValue::Array(vec![tf::RawValue::Integer(42)]),
+                tf::Value::Array(vec![tf::Value::Integer(42)]),
             );
             map.insert("object".to_string(), {
                 let mut map = std::collections::HashMap::new();
-                map.insert("inner_integer".to_string(), tf::RawValue::Integer(42));
-                tf::RawValue::Object(map)
+                map.insert("inner_integer".to_string(), tf::Value::Integer(42));
+                tf::Value::Object(map)
             });
             map.insert("object_to_null".to_string(), {
                 let mut map = std::collections::HashMap::new();
-                map.insert("inner_integer".to_string(), tf::RawValue::Integer(42));
-                tf::RawValue::Object(map)
+                map.insert("inner_integer".to_string(), tf::Value::Integer(42));
+                tf::Value::Object(map)
             });
-            map.insert("null_to_object".to_string(), tf::RawValue::Null);
-            map.insert("null".to_string(), tf::RawValue::Null);
+            map.insert("null_to_object".to_string(), tf::Value::Null);
+            map.insert("null".to_string(), tf::Value::Null);
             map
         }
 
@@ -412,27 +424,27 @@ mod tests {
             let mut map = std::collections::HashMap::new();
             map.insert(
                 "string".to_string(),
-                tf::RawValue::String("another string".to_string()),
+                tf::Value::String("another string".to_string()),
             );
-            map.insert("integer".to_string(), tf::RawValue::Integer(43));
-            map.insert("float".to_string(), tf::RawValue::Float(43.1));
-            map.insert("bool".to_string(), tf::RawValue::Boolean(false));
+            map.insert("integer".to_string(), tf::Value::Integer(43));
+            map.insert("float".to_string(), tf::Value::Float(43.1));
+            map.insert("bool".to_string(), tf::Value::Boolean(false));
             map.insert(
                 "array".to_string(),
-                tf::RawValue::Array(vec![tf::RawValue::Integer(43)]),
+                tf::Value::Array(vec![tf::Value::Integer(43)]),
             );
             map.insert("object".to_string(), {
                 let mut map = std::collections::HashMap::new();
-                map.insert("inner_integer".to_string(), tf::RawValue::Integer(43));
-                tf::RawValue::Object(map)
+                map.insert("inner_integer".to_string(), tf::Value::Integer(43));
+                tf::Value::Object(map)
             });
-            map.insert("object_to_null".to_string(), tf::RawValue::Null);
+            map.insert("object_to_null".to_string(), tf::Value::Null);
             map.insert("null_to_object".to_string(), {
                 let mut map = std::collections::HashMap::new();
-                map.insert("inner_integer".to_string(), tf::RawValue::Integer(43));
-                tf::RawValue::Object(map)
+                map.insert("inner_integer".to_string(), tf::Value::Integer(43));
+                tf::Value::Object(map)
             });
-            map.insert("null".to_string(), tf::RawValue::Null);
+            map.insert("null".to_string(), tf::Value::Null);
             map
         }
 

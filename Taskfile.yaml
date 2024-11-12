@@ -88,6 +88,10 @@ tasks:
     cmds:
       - echo 'Running tests...'
       - cargo test
+        {{if .NAME}} {{.NAME}}{{end}}
+        -- --nocapture {{.CLI_ARGS}}
+    vars:
+      NAME: '{{.NAME | default ""}}'
 
   test-coverage:
     desc: Test project with coverage

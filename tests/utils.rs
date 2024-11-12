@@ -21,6 +21,7 @@ pub fn get_plan_files() -> Vec<std::string::String> {
         get_test_data_file_path("plans/delete-create/terraform.tfplan.json"),
         get_test_data_file_path("plans/no-op/terraform.tfplan.json"),
         get_test_data_file_path("plans/no-resources/terraform.tfplan.json"),
+        get_test_data_file_path("plans/sensitive/terraform.tfplan.json"),
         get_test_data_file_path("plans/update/terraform.tfplan.json"),
     ]
 }
