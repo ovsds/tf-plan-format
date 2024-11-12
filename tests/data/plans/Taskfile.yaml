@@ -20,7 +20,8 @@ tasks:
         vars: { COMMAND: "-chdir={{.DIR}}/target plan -state=../terraform.tfstate -out=../terraform.tfplan" }
       - task: terraform:run
         vars: { COMMAND: "-chdir={{.DIR}}/target show -json ../terraform.tfplan | jq > {{.DIR}}/terraform.tfplan.json" }
-
+    status:
+      - find "{{.DIR}}/terraform.tfplan.json"
     requires:
       vars: ["DIR"]
 
@@ -32,4 +33,4 @@ tasks:
         vars: { DIR: "{{.DIR}}" }
     vars:
       DIRS:
-        sh: find {{.TASKFILE_DIR}} -type d -depth 1
+        sh: find {{.TASKFILE_DIR}} -type d -depth 1 | grep -v artificial

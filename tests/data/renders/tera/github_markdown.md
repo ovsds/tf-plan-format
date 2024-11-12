@@ -60,6 +60,21 @@ triggers_replace: null
 No resource changes
 </details>
 <details>
+<summary>♻️tests/data/plans/sensitive/terraform.tfplan.json</summary>
+<details>
+<summary>♻️random_bytes.test
+</summary>
+
+```
+base64: sensitive -> null
+hex: sensitive -> null
+keepers: null
+length: 4 -> 8
+```
+
+</details>
+</details>
+<details>
 <summary>🔄tests/data/plans/update/terraform.tfplan.json</summary>
 <details>
 <summary>🔄terraform_data.foo-bar

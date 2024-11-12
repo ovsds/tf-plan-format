@@ -61,7 +61,7 @@ mod tests {
 
             let expected = utils::test::get_test_data_file_contents("renders/tera/custom.md");
 
-            assert_eq!(expected, result);
+            pretty_assertions::assert_eq!(expected, result);
         }
     }
 }

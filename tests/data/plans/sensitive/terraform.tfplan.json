@@ -1,0 +1,115 @@
+{
+  "format_version": "1.2",
+  "terraform_version": "1.7.5",
+  "planned_values": {
+    "root_module": {
+      "resources": [
+        {
+          "address": "random_bytes.test",
+          "mode": "managed",
+          "type": "random_bytes",
+          "name": "test",
+          "provider_name": "registry.terraform.io/hashicorp/random",
+          "schema_version": 0,
+          "values": {
+            "keepers": null,
+            "length": 8
+          },
+          "sensitive_values": {}
+        }
+      ]
+    }
+  },
+  "resource_changes": [
+    {
+      "address": "random_bytes.test",
+      "mode": "managed",
+      "type": "random_bytes",
+      "name": "test",
+      "provider_name": "registry.terraform.io/hashicorp/random",
+      "change": {
+        "actions": ["delete", "create"],
+        "before": {
+          "base64": "hxk5iA==",
+          "hex": "87193988",
+          "keepers": null,
+          "length": 4
+        },
+        "after": {
+          "keepers": null,
+          "length": 8
+        },
+        "after_unknown": {
+          "base64": true,
+          "hex": true
+        },
+        "before_sensitive": {
+          "base64": true,
+          "hex": true
+        },
+        "after_sensitive": {
+          "base64": true,
+          "hex": true
+        },
+        "replace_paths": [["length"]]
+      },
+      "action_reason": "replace_because_cannot_update"
+    }
+  ],
+  "prior_state": {
+    "format_version": "1.0",
+    "terraform_version": "1.7.5",
+    "values": {
+      "root_module": {
+        "resources": [
+          {
+            "address": "random_bytes.test",
+            "mode": "managed",
+            "type": "random_bytes",
+            "name": "test",
+            "provider_name": "registry.terraform.io/hashicorp/random",
+            "schema_version": 0,
+            "values": {
+              "base64": "hxk5iA==",
+              "hex": "87193988",
+              "keepers": null,
+              "length": 4
+            },
+            "sensitive_values": {
+              "base64": true,
+              "hex": true
+            }
+          }
+        ]
+      }
+    }
+  },
+  "configuration": {
+    "provider_config": {
+      "random": {
+        "name": "random",
+        "full_name": "registry.terraform.io/hashicorp/random",
+        "version_constraint": "3.6.3"
+      }
+    },
+    "root_module": {
+      "resources": [
+        {
+          "address": "random_bytes.test",
+          "mode": "managed",
+          "type": "random_bytes",
+          "name": "test",
+          "provider_config_key": "random",
+          "expressions": {
+            "length": {
+              "constant_value": 8
+            }
+          },
+          "schema_version": 0
+        }
+      ]
+    }
+  },
+  "timestamp": "2024-11-12T20:19:11Z",
+  "errored": false
+}
