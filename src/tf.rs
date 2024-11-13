@@ -70,6 +70,7 @@ fn value_map_from_raw(raw_map: &RawValueMap) -> ValueMap {
 #[serde(untagged)]
 pub enum BoolValue {
     Boolean(bool),
+    Array(Vec<BoolValue>),
     Object(std::collections::HashMap<String, BoolValue>),
     Null,
 }
@@ -222,20 +223,35 @@ fn _get_child_sensitive(sensitive: &BoolValue, key: &str) -> BoolValue {
 
 fn _is_sensitive(sensitive: &BoolValue) -> bool {
     match sensitive {
-        BoolValue::Boolean(value) => value == &true,
+        BoolValue::Boolean(value) => *value,
         _ => false,
     }
 }
 
 fn _mask_sensitive(value: Value, sensitive: &BoolValue) -> Value {
-    if _is_sensitive(sensitive) {
-        return Value::Sensitive;
+    match (value.clone(), sensitive) {
+        (Value::Object(value_map), _) => Value::Object(mask_sensitive_map(value_map, sensitive)),
+        (Value::Array(value_array), BoolValue::Array(sensitive_array)) => {
+            Value::Array(mask_sensitive_array(value_array, sensitive_array))
+        }
+        _ => {
+            if _is_sensitive(sensitive) {
+                Value::Sensitive
+            } else {
+                value
+            }
+        }
     }
+}
 
-    match value {
-        Value::Object(value_map) => Value::Object(mask_sensitive_map(value_map, sensitive)),
-        _ => value,
+fn mask_sensitive_array(mut value_array: Vec<Value>, sensitive_array: &[BoolValue]) -> Vec<Value> {
+    for (index, value) in value_array.iter_mut().enumerate() {
+        let sensitive = sensitive_array
+            .get(index)
+            .unwrap_or(&BoolValue::Boolean(false));
+        *value = _mask_sensitive(value.clone(), sensitive);
     }
+    value_array
 }
 
 fn mask_sensitive_map(mut value_map: ValueMap, sensitive: &BoolValue) -> ValueMap {
@@ -259,17 +275,13 @@ impl Change {
             .as_ref()
             .unwrap_or(&BoolValue::Boolean(false));
 
-        let before = raw
-            .change
-            .before
-            .as_ref()
-            .map(|before| mask_sensitive_map(value_map_from_raw(before), before_sensitive));
+        let raw_before = raw.change.before.as_ref();
+        let unmasked_before = raw_before.map(value_map_from_raw);
+        let before = unmasked_before.map(|before| mask_sensitive_map(before, before_sensitive));
 
-        let after = raw
-            .change
-            .after
-            .as_ref()
-            .map(|after| mask_sensitive_map(value_map_from_raw(after), after_sensitive));
+        let raw_after = raw.change.after.as_ref();
+        let unmasked_after = raw_after.map(value_map_from_raw);
+        let after = unmasked_after.map(|after| mask_sensitive_map(after, after_sensitive));
 
         Change {
             address: raw.address.clone(),
@@ -573,6 +585,14 @@ pub mod tests {
             }
 
             #[test]
+            fn full() {
+                let path = utils::test::get_test_data_file_path("plans/artificial/full.json");
+                let raw = RawPlan::from_file(&path).unwrap();
+
+                let _ = Plan::from_raw(raw);
+            }
+
+            #[test]
             fn empty() {
                 let raw = get_raw(None, None, None, None);
                 let change = Change::from_raw(raw);
@@ -676,6 +696,94 @@ pub mod tests {
                 let mut expected_after = ValueMap::new();
                 expected_after.insert("key".to_string(), Value::Sensitive);
                 assert_eq!(change.after, Some(expected_after));
+            }
+
+            #[test]
+            fn sensitive_after_array() {
+                let mut after = RawValueMap::new();
+                after.insert(
+                    "key".to_string(),
+                    RawValue::Array(vec![
+                        RawValue::String("true".to_string()),
+                        RawValue::String("false".to_string()),
+                        RawValue::String("null".to_string()),
+                        RawValue::String("absent".to_string()),
+                    ]),
+                );
+
+                let mut after_sensitive = std::collections::HashMap::new();
+                after_sensitive.insert(
+                    "key".to_string(),
+                    BoolValue::Array(vec![
+                        BoolValue::Boolean(true),
+                        BoolValue::Boolean(false),
+                        BoolValue::Null,
+                    ]),
+                );
+
+                let raw = get_raw(
+                    None,
+                    Some(after.clone()),
+                    None,
+                    Some(BoolValue::Object(after_sensitive)),
+                );
+                let change = Change::from_raw(raw);
+
+                let mut expected_after = ValueMap::new();
+                expected_after.insert(
+                    "key".to_string(),
+                    Value::Array(vec![
+                        Value::Sensitive,
+                        Value::String("false".to_string()),
+                        Value::String("null".to_string()),
+                        Value::String("absent".to_string()),
+                    ]),
+                );
+                assert_eq!(change.after, Some(expected_after));
+            }
+
+            #[test]
+            fn sensitive_before_array() {
+                let mut before = RawValueMap::new();
+                before.insert(
+                    "key".to_string(),
+                    RawValue::Array(vec![
+                        RawValue::String("true".to_string()),
+                        RawValue::String("false".to_string()),
+                        RawValue::String("null".to_string()),
+                        RawValue::String("absent".to_string()),
+                    ]),
+                );
+
+                let mut before_sensitive = std::collections::HashMap::new();
+                before_sensitive.insert(
+                    "key".to_string(),
+                    BoolValue::Array(vec![
+                        BoolValue::Boolean(true),
+                        BoolValue::Boolean(false),
+                        BoolValue::Null,
+                    ]),
+                );
+
+                let raw = get_raw(
+                    Some(before.clone()),
+                    None,
+                    Some(BoolValue::Object(before_sensitive)),
+                    None,
+                );
+                let change = Change::from_raw(raw);
+
+                let mut expected_before = ValueMap::new();
+                expected_before.insert(
+                    "key".to_string(),
+                    Value::Array(vec![
+                        Value::Sensitive,
+                        Value::String("false".to_string()),
+                        Value::String("null".to_string()),
+                        Value::String("absent".to_string()),
+                    ]),
+                );
+                assert_eq!(change.before, Some(expected_before));
             }
         }
     }
