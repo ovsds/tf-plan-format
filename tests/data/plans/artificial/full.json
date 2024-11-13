@@ -70,8 +70,10 @@
         },
         "before_sensitive": {
           "key_boolean": true,
+          "key_array": [true, false, null],
           "key_object": {
             "key_boolean": false,
+            "key_array": [true],
             "key_object": {
               "key_boolean": true
             },
@@ -81,8 +83,10 @@
         },
         "after_sensitive": {
           "key_boolean": true,
+          "key_array": [true, false, null],
           "key_object": {
             "key_boolean": false,
+            "key_array": [true],
             "key_object": {
               "key_boolean": true
             },
