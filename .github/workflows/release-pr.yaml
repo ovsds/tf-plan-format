@@ -33,10 +33,14 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Get Image Tag
+        id: get-image-tag
+        run: echo "image-tag=ghcr.io/${{ github.repository_owner }}/${{ github.event.repository.name }}-beta:${{ github.event.number }}-${{ github.event.pull_request.head.sha }}" >> $GITHUB_OUTPUT
+
       - name: Build binaries and images
         run: task build:all
         env:
-          IMAGE_TAG: "ghcr.io/${{ github.repository_owner }}/${{ github.event.repository.name }}-beta:${{ github.event.number }}-${{ github.event.pull_request.head.sha }}"
+          IMAGE_TAG: ${{ steps.get-image-tag.outputs.image-tag }}
 
       - name: Release binaries
         id: release-binaries
@@ -50,7 +54,8 @@ jobs:
         with:
           issue-number: ${{ github.event.number }}
           body: |
-            Binaries for this PR are available for download:
-            [Download Binaries](${{ steps.release-binaries.outputs.artifact-url }})
+            Build Artifacts:
+              - Binaries: [download](${{ steps.release-binaries.outputs.artifact-url }})
+              - Image Tag: `${{ steps.get-image-tag.outputs.image-tag }}`
           unique-body-includes: |
-            Binaries for this PR are available for download:
+            Build Artifacts:
