@@ -5,7 +5,8 @@ use std::process::Command;
 
 #[test]
 fn default() -> Result<(), Box<dyn std::error::Error>> {
-    let expected_result = utils::get_test_data_file_contents("renders/tera/github_markdown.md");
+    let template = utils::get_test_data_file_contents("tera/templates/custom");
+    let expected_result = utils::get_test_data_file_contents("tera/renders/custom.md");
 
     let mut cmd = Command::cargo_bin("tf_plan_format")?;
     cmd.arg("custom");
@@ -14,8 +15,6 @@ fn default() -> Result<(), Box<dyn std::error::Error>> {
     for file in utils::get_plan_files() {
         cmd.arg("--file").arg(file);
     }
-
-    let template = tf_plan_format::template::tera::GITHUB_MARKDOWN_TEMPLATE;
     cmd.arg("--template").arg(template);
 
     cmd.assert().success();
@@ -28,7 +27,8 @@ fn default() -> Result<(), Box<dyn std::error::Error>> {
 
 #[test]
 fn glob() -> Result<(), Box<dyn std::error::Error>> {
-    let expected_result = utils::get_test_data_file_contents("renders/tera/github_markdown.md");
+    let template = utils::get_test_data_file_contents("tera/templates/custom");
+    let expected_result = utils::get_test_data_file_contents("tera/renders/custom.md");
 
     let mut cmd = Command::cargo_bin("tf_plan_format")?;
     cmd.arg("custom");
@@ -39,7 +39,6 @@ fn glob() -> Result<(), Box<dyn std::error::Error>> {
         utils::TEST_DATA_FOLDER_PATH
     ));
 
-    let template = tf_plan_format::template::tera::GITHUB_MARKDOWN_TEMPLATE;
     cmd.arg("--template").arg(template);
 
     cmd.assert().success();
@@ -52,11 +51,11 @@ fn glob() -> Result<(), Box<dyn std::error::Error>> {
 
 #[test]
 fn invalid_engine() -> Result<(), Box<dyn std::error::Error>> {
+    let template = utils::get_test_data_file_contents("tera/templates/custom");
+
     let mut cmd = Command::cargo_bin("tf_plan_format")?;
     cmd.arg("custom");
     cmd.arg("--engine").arg("invalid");
-
-    let template = tf_plan_format::template::tera::GITHUB_MARKDOWN_TEMPLATE;
     cmd.arg("--template").arg(template);
 
     for file in utils::get_plan_files() {
@@ -74,11 +73,11 @@ fn invalid_engine() -> Result<(), Box<dyn std::error::Error>> {
 
 #[test]
 fn invalid_files() -> Result<(), Box<dyn std::error::Error>> {
+    let template = utils::get_test_data_file_contents("tera/templates/custom");
+
     let mut cmd = Command::cargo_bin("tf_plan_format")?;
     cmd.arg("custom");
     cmd.arg("--engine").arg("tera");
-
-    let template = tf_plan_format::template::tera::GITHUB_MARKDOWN_TEMPLATE;
     cmd.arg("--template").arg(template);
 
     cmd.arg("--file").arg("invalid");
@@ -94,11 +93,12 @@ fn invalid_files() -> Result<(), Box<dyn std::error::Error>> {
 
 #[test]
 fn test_invalid_template() -> Result<(), Box<dyn std::error::Error>> {
+    let template = "{{invalid";
+
     let mut cmd = Command::cargo_bin("tf_plan_format")?;
     cmd.arg("custom");
     cmd.arg("--engine").arg("tera");
 
-    let template = "{{invalid";
     cmd.arg("--template").arg(template);
 
     for file in utils::get_plan_files() {

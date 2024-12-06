@@ -26,8 +26,20 @@ impl FromStr for Engine {
 /// Returns an error if rendering fails
 pub fn render(engine: &Engine, data: &tf::Data, template: &str) -> Result<String, types::Error> {
     match engine {
-        Engine::Tera => tera::render(data, template),
+        Engine::Tera => tera::render(data, template, None),
     }
+}
+
+/// # Errors
+/// Returns an error if rendering fails
+pub fn render_github(data: &tf::Data, show_changed_values: bool) -> Result<String, types::Error> {
+    let template = tera::GITHUB_MARKDOWN_TEMPLATE;
+    let mut options = tera::RenderOptions::new();
+    options.insert(
+        "show_changed_values".to_string(),
+        tera::RenderOptionValue::Bool(show_changed_values),
+    );
+    tera::render(data, template, Some(options))
 }
 
 #[cfg(test)]
@@ -56,10 +68,26 @@ mod tests {
         #[test]
         fn default() {
             let data = tf::tests::get_test_data();
-            let template = "{%- for name, plan in data.plans -%}\n{{ name }}\n{% endfor %}";
-            let result = render(&Engine::Tera, &data, template).unwrap();
+            let template = utils::test::get_test_data_file_contents("tera/templates/custom");
+            let result = render(&Engine::Tera, &data, &template).unwrap();
 
-            let expected = utils::test::get_test_data_file_contents("renders/tera/custom.md");
+            let expected = utils::test::get_test_data_file_contents("tera/renders/custom.md");
+
+            pretty_assertions::assert_eq!(expected, result);
+        }
+    }
+
+    mod render_github {
+        use super::*;
+        use crate::utils;
+
+        #[test]
+        fn default() {
+            let data = tf::tests::get_test_data();
+            let result = render_github(&data, false).unwrap();
+
+            let expected =
+                utils::test::get_test_data_file_contents("tera/renders/github_markdown/default.md");
 
             pretty_assertions::assert_eq!(expected, result);
         }
