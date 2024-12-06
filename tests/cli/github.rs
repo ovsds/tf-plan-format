@@ -4,10 +4,32 @@ use std::process::Command;
 
 #[test]
 fn default() -> Result<(), Box<dyn std::error::Error>> {
-    let expected_result = utils::get_test_data_file_contents("renders/tera/github_markdown.md");
+    let expected_result =
+        utils::get_test_data_file_contents("tera/renders/github_markdown/default.md");
 
     let mut cmd = Command::cargo_bin("tf_plan_format")?;
     cmd.arg("github");
+
+    for file in utils::get_plan_files() {
+        cmd.arg("--file").arg(file);
+    }
+
+    cmd.assert().success();
+    cmd.assert().stdout(expected_result + "\n");
+    cmd.assert().stderr("");
+    cmd.assert().code(0);
+
+    Ok(())
+}
+
+#[test]
+fn changed() -> Result<(), Box<dyn std::error::Error>> {
+    let expected_result =
+        utils::get_test_data_file_contents("tera/renders/github_markdown/show_changed_values.md");
+
+    let mut cmd = Command::cargo_bin("tf_plan_format")?;
+    cmd.arg("github");
+    cmd.arg("--changed-values");
 
     for file in utils::get_plan_files() {
         cmd.arg("--file").arg(file);

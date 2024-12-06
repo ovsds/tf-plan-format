@@ -1,0 +1,3 @@
+{%- for name, plan in data.plans -%}
+{{ name }}
+{% endfor -%}

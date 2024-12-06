@@ -211,31 +211,31 @@ pub struct Change {
     pub raw: RawResourceChange,
 }
 
-fn _get_child_sensitive(sensitive: &BoolValue, key: &str) -> BoolValue {
+fn get_child_sensitive(sensitive: &BoolValue, key: &str) -> BoolValue {
     match sensitive {
         BoolValue::Object(map) => match map.get(key) {
             Some(value) => value.clone(),
             None => BoolValue::Boolean(false),
         },
-        _ => BoolValue::Boolean(_is_sensitive(sensitive)),
+        _ => BoolValue::Boolean(is_sensitive(sensitive)),
     }
 }
 
-fn _is_sensitive(sensitive: &BoolValue) -> bool {
+fn is_sensitive(sensitive: &BoolValue) -> bool {
     match sensitive {
         BoolValue::Boolean(value) => *value,
         _ => false,
     }
 }
 
-fn _mask_sensitive(value: Value, sensitive: &BoolValue) -> Value {
+fn mask_sensitive(value: Value, sensitive: &BoolValue) -> Value {
     match (value.clone(), sensitive) {
         (Value::Object(value_map), _) => Value::Object(mask_sensitive_map(value_map, sensitive)),
         (Value::Array(value_array), BoolValue::Array(sensitive_array)) => {
             Value::Array(mask_sensitive_array(value_array, sensitive_array))
         }
         _ => {
-            if _is_sensitive(sensitive) {
+            if is_sensitive(sensitive) {
                 Value::Sensitive
             } else {
                 value
@@ -249,14 +249,14 @@ fn mask_sensitive_array(mut value_array: Vec<Value>, sensitive_array: &[BoolValu
         let sensitive = sensitive_array
             .get(index)
             .unwrap_or(&BoolValue::Boolean(false));
-        *value = _mask_sensitive(value.clone(), sensitive);
+        *value = mask_sensitive(value.clone(), sensitive);
     }
     value_array
 }
 
 fn mask_sensitive_map(mut value_map: ValueMap, sensitive: &BoolValue) -> ValueMap {
     for (key, value) in &mut value_map {
-        *value = _mask_sensitive(value.clone(), &_get_child_sensitive(sensitive, key));
+        *value = mask_sensitive(value.clone(), &get_child_sensitive(sensitive, key));
     }
     value_map
 }

@@ -42,6 +42,13 @@ pub enum Commands {
             num_args = 1..
         )]
         file: Vec<String>,
+        #[clap(
+            short,
+            long,
+            help = "Wheather to render changed values",
+            default_value = "false"
+        )]
+        changed_values: bool,
     },
 }
 
@@ -59,7 +66,10 @@ pub fn root(
             file,
             template,
         }) => custom(engine, template, file, stdout),
-        Some(Commands::Github { file }) => github(file, stdout),
+        Some(Commands::Github {
+            file,
+            changed_values,
+        }) => github(file, *changed_values, stdout),
         None => none(stdout, stderr),
     }
 }
@@ -91,16 +101,23 @@ fn custom(
     Ok(())
 }
 
-fn github(files: &[String], mut stdout: impl std::io::Write) -> Result<(), types::Error> {
-    let engine = template::Engine::Tera;
-    let template = template::tera::GITHUB_MARKDOWN_TEMPLATE;
-
+fn github(
+    files: &[String],
+    show_changed_values: bool,
+    mut stdout: impl std::io::Write,
+) -> Result<(), types::Error> {
     let data = tf::Data::from_files(files).map_err(|e| {
         types::Error::command("Failed to parse plan".to_string(), exitcode::DATAERR, e)
     })?;
 
     // Should never fail as the template is hardcoded
-    let result = template::render(&engine, &data, template).unwrap();
+    let result = template::render_github(&data, show_changed_values).map_err(|e| {
+        types::Error::command(
+            "Failed to render template".to_string(),
+            exitcode::DATAERR,
+            e,
+        )
+    })?;
 
     writeln!(stdout, "{result}").unwrap();
 

@@ -1,4 +1,6 @@
 use itertools::Itertools;
+use serde::Deserialize;
+use serde::Serialize;
 
 use crate::tf;
 use crate::types;
@@ -19,7 +21,7 @@ No resource changes
 </summary>
 
 ```
-{{ render_changes(before=change.before, after=change.after) }}
+{{ render_values(before=change.before, after=change.after, show_changed_values=options.show_changed_values) }}
 ```
 
 </details>
@@ -27,10 +29,11 @@ No resource changes
 {%- endif %}
 </details>
 {% endfor %}";
+const DEFAULT_SHOW_CHANGED_VALUES: bool = true;
 
 type Args = std::collections::HashMap<String, tera::Value>;
 
-fn _render_action(action: &tf::Action) -> String {
+fn render_action(action: &tf::Action) -> String {
     match action {
         tf::Action::Create => "✅".to_string(),
         tf::Action::Delete => "❌".to_string(),
@@ -42,25 +45,25 @@ fn _render_action(action: &tf::Action) -> String {
     }
 }
 
-fn render_action(args: &Args) -> tera::Result<tera::Value> {
+fn tera_render_action(args: &Args) -> tera::Result<tera::Value> {
     let action = args.get("action").ok_or("action must be present in args")?;
     let action = tera::from_value::<tf::Action>(action.clone())?;
 
-    Ok(tera::Value::String(_render_action(&action)))
+    Ok(tera::Value::String(render_action(&action)))
 }
 
-fn render_actions(args: &Args) -> tera::Result<tera::Value> {
+fn tera_render_actions(args: &Args) -> tera::Result<tera::Value> {
     let actions = args
         .get("actions")
         .ok_or("actions must be present in args")?;
     let actions = tera::from_value::<Vec<tf::Action>>(actions.clone())?;
 
-    let result: Vec<String> = actions.iter().map(_render_action).collect();
+    let result: Vec<String> = actions.iter().map(render_action).collect();
 
     Ok(tera::Value::String(result.join("")))
 }
 
-fn _render_plaintext(value: &tf::Value) -> String {
+fn render_plaintext(value: &tf::Value) -> String {
     match value {
         tf::Value::Sensitive => "sensitive".to_string(),
         tf::Value::String(value) => format!("{}", tera::to_value(value).unwrap()),
@@ -71,7 +74,7 @@ fn _render_plaintext(value: &tf::Value) -> String {
             "[{}]",
             value
                 .iter()
-                .map(_render_plaintext)
+                .map(render_plaintext)
                 .collect::<Vec<String>>()
                 .join(", ")
         ),
@@ -80,44 +83,44 @@ fn _render_plaintext(value: &tf::Value) -> String {
     }
 }
 
-fn _render_unchanged_plaintext(key: &str, value: &tf::Value, indent_count: usize) -> Vec<String> {
+fn render_unchanged_plaintext(key: &str, value: &tf::Value, indent_count: usize) -> Vec<String> {
     vec![format!(
         "{}{key}: {}",
         INDENT_STR.repeat(indent_count),
-        _render_plaintext(value)
+        render_plaintext(value)
     )]
 }
 
-fn _render_unchanged_hashmap_value(
+fn render_unchanged_hashmap_value(
     value: &std::collections::HashMap<String, tf::Value>,
     indent_count: usize,
 ) -> Vec<String> {
     let mut result: Vec<String> = Vec::new();
     for (key, value) in value.iter().sorted_by_key(|x| x.0) {
-        result.extend(_render_unchanged(key, value, indent_count));
+        result.extend(render_unchanged(key, value, indent_count));
     }
     result
 }
 
-fn _render_unchanged_hashmap(
+fn render_unchanged_hashmap(
     key: &str,
     value: &std::collections::HashMap<String, tf::Value>,
     indent_count: usize,
 ) -> Vec<String> {
     let mut result: Vec<String> = Vec::new();
     result.push(format!("{}{key}:", INDENT_STR.repeat(indent_count)));
-    result.extend(_render_unchanged_hashmap_value(value, indent_count + 1));
+    result.extend(render_unchanged_hashmap_value(value, indent_count + 1));
     result
 }
 
-fn _render_unchanged(key: &str, value: &tf::Value, indent_count: usize) -> Vec<String> {
+fn render_unchanged(key: &str, value: &tf::Value, indent_count: usize) -> Vec<String> {
     match value {
-        tf::Value::Object(map) => _render_unchanged_hashmap(key, map, indent_count),
-        _ => _render_unchanged_plaintext(key, value, indent_count),
+        tf::Value::Object(map) => render_unchanged_hashmap(key, map, indent_count),
+        _ => render_unchanged_plaintext(key, value, indent_count),
     }
 }
 
-fn _render_changed_plaintext(
+fn render_changed_plaintext(
     key: &str,
     before_value: &tf::Value,
     after_value: &tf::Value,
@@ -126,15 +129,16 @@ fn _render_changed_plaintext(
     vec![format!(
         "{}{key}: {} -> {}",
         INDENT_STR.repeat(indent_count),
-        _render_plaintext(before_value),
-        _render_plaintext(after_value)
+        render_plaintext(before_value),
+        render_plaintext(after_value)
     )]
 }
 
-fn _render_changed_hashmap_value(
+fn render_changed_hashmap_value(
     before: &std::collections::HashMap<String, tf::Value>,
     after: &std::collections::HashMap<String, tf::Value>,
     indent_count: usize,
+    show_changed_values: bool,
 ) -> Vec<String> {
     let mut keys: HashSet<String> = HashSet::new();
     keys.extend(before.keys().cloned());
@@ -144,89 +148,112 @@ fn _render_changed_hashmap_value(
     for key in keys.iter().sorted() {
         let before_value = before.get(key).unwrap_or(&tf::Value::Null);
         let after_value = after.get(key).unwrap_or(&tf::Value::Null);
-        result.extend(_render_changed(
+        result.extend(render_changed(
             key,
             before_value,
             after_value,
             indent_count,
+            show_changed_values,
         ));
     }
     result
 }
 
-fn _render_changed_hashmap(
+fn render_changed_hashmap(
     key: &str,
     before: &std::collections::HashMap<String, tf::Value>,
     after: &std::collections::HashMap<String, tf::Value>,
     indent_count: usize,
+    show_changed_values: bool,
 ) -> Vec<String> {
     let mut result: Vec<String> = Vec::new();
     result.push(format!("{}{key}:", INDENT_STR.repeat(indent_count)));
-    result.extend(_render_changed_hashmap_value(
+    result.extend(render_changed_hashmap_value(
         before,
         after,
         indent_count + 1,
+        show_changed_values,
     ));
     result
 }
 
-fn _render_changed(
+fn render_changed(
     key: &str,
     before_value: &tf::Value,
     after_value: &tf::Value,
     indent_count: usize,
+    show_changed_values: bool,
 ) -> Vec<String> {
     match (before_value, after_value) {
         (tf::Value::Object(before), tf::Value::Object(after)) => {
-            _render_changed_hashmap(key, before, after, indent_count)
+            render_changed_hashmap(key, before, after, indent_count, show_changed_values)
         }
         (tf::Value::Null, tf::Value::Object(after)) => {
-            _render_unchanged_hashmap(key, after, indent_count)
+            render_unchanged_hashmap(key, after, indent_count)
         }
         (tf::Value::Object(before), tf::Value::Null) => {
-            _render_unchanged_hashmap(key, before, indent_count)
+            render_unchanged_hashmap(key, before, indent_count)
         }
         (_, _) => {
-            if before_value == after_value {
-                _render_unchanged_plaintext(key, before_value, indent_count)
+            if before_value != after_value {
+                render_changed_plaintext(key, before_value, after_value, indent_count)
+            } else if show_changed_values {
+                render_unchanged_plaintext(key, before_value, indent_count)
             } else {
-                _render_changed_plaintext(key, before_value, after_value, indent_count)
+                Vec::new()
             }
         }
     }
 }
 
-fn render_changes(args: &Args) -> tera::Result<tera::Value> {
+fn tera_render_values(args: &Args) -> tera::Result<tera::Value> {
     let before = args.get("before").ok_or("before must be present in args")?;
     let after = args.get("after").ok_or("after must be present in args")?;
+    let show_changed_values = args
+        .get("show_changed_values")
+        .unwrap_or(&tera::Value::Bool(DEFAULT_SHOW_CHANGED_VALUES));
 
     let before = tera::from_value::<Option<tf::ValueMap>>(before.clone())?;
     let after = tera::from_value::<Option<tf::ValueMap>>(after.clone())?;
+    let show_changed_values = tera::from_value::<bool>(show_changed_values.clone())?;
 
-    match (before, after) {
-        (Some(before), Some(after)) => {
-            let result = _render_changed_hashmap_value(&before, &after, 0);
+    match (before, after, show_changed_values) {
+        (Some(before), Some(after), _) => {
+            let result = render_changed_hashmap_value(&before, &after, 0, show_changed_values);
             Ok(tera::Value::String(result.join("\n")))
         }
-        (Some(before), None) => {
-            let result = _render_unchanged_hashmap_value(&before, 0);
+        (Some(before), None, _) => {
+            let result = render_unchanged_hashmap_value(&before, 0);
             Ok(tera::Value::String(result.join("\n")))
         }
-        (None, Some(after)) => {
-            let result = _render_unchanged_hashmap_value(&after, 0);
+        (None, Some(after), _) => {
+            let result = render_unchanged_hashmap_value(&after, 0);
             Ok(tera::Value::String(result.join("\n")))
         }
-        (None, None) => Ok(tera::Value::String(String::new())),
+        _ => Ok(tera::Value::String(String::new())),
     }
 }
 
+#[derive(Serialize, Deserialize)]
+#[serde(untagged)]
+pub enum RenderOptionValue {
+    Bool(bool),
+    String(String),
+}
+
+pub type RenderOptions = std::collections::HashMap<String, RenderOptionValue>;
+
 /// # Errors
 /// Returns an error if template is invalid or rendering fails
-pub fn render(data: &tf::Data, template: &str) -> Result<String, types::Error> {
+pub fn render(
+    data: &tf::Data,
+    template: &str,
+    options: Option<RenderOptions>,
+) -> Result<String, types::Error> {
     let mut tera = tera::Tera::default();
-    tera.register_function("render_changes", render_changes);
-    tera.register_function("render_action", render_action);
-    tera.register_function("render_actions", render_actions);
+    tera.register_function("render_values", tera_render_values);
+    tera.register_function("render_action", tera_render_action);
+    tera.register_function("render_actions", tera_render_actions);
 
     let template_name = "template";
     match tera.add_raw_template(template_name, template) {
@@ -241,11 +268,13 @@ pub fn render(data: &tf::Data, template: &str) -> Result<String, types::Error> {
 
     let mut context = tera::Context::new();
     context.insert("data", &data);
+    let options = options.unwrap_or_default();
+    context.insert("options", &options);
 
     match tera.render(template_name, &context) {
         Ok(result) => Ok(result),
         Err(e) => Err(types::Error::chain(
-            format!("Failed to render template({template})"),
+            "Failed to render template".to_string(),
             e,
         )),
     }
@@ -260,7 +289,7 @@ mod tests {
 
         fn test_with_context(context: tera::Context) -> tera::Result<String> {
             let mut tera = tera::Tera::default();
-            tera.register_function("render_action", render_action);
+            tera.register_function("render_action", tera_render_action);
 
             tera.add_raw_template("template", "{{ render_action(action=action) }}")
                 .unwrap();
@@ -290,7 +319,7 @@ mod tests {
         fn not_in_args() {
             let context = tera::Context::new();
             let mut tera = tera::Tera::default();
-            tera.register_function("render_action", render_action);
+            tera.register_function("render_action", tera_render_action);
             tera.add_raw_template("template", "{{ render_action() }}")
                 .unwrap();
 
@@ -312,7 +341,7 @@ mod tests {
 
         fn test_with_context(context: tera::Context) -> tera::Result<String> {
             let mut tera = tera::Tera::default();
-            tera.register_function("render_actions", render_actions);
+            tera.register_function("render_actions", tera_render_actions);
 
             tera.add_raw_template("template", "{{ render_actions(actions=actions) }}")
                 .unwrap();
@@ -351,7 +380,7 @@ mod tests {
         fn not_in_args() {
             let context = tera::Context::new();
             let mut tera = tera::Tera::default();
-            tera.register_function("render_actions", render_actions);
+            tera.register_function("render_actions", tera_render_actions);
             tera.add_raw_template("template", "{{ render_actions() }}")
                 .unwrap();
 
@@ -368,16 +397,16 @@ mod tests {
         }
     }
 
-    mod render_changes {
+    mod render_values {
         use super::*;
 
         fn test_with_context(context: tera::Context) -> tera::Result<String> {
             let mut tera = tera::Tera::default();
-            tera.register_function("render_changes", render_changes);
+            tera.register_function("render_values", tera_render_values);
 
             tera.add_raw_template(
                 "template",
-                "{{ render_changes(before=before, after=after) }}",
+                "{{ render_values(before=before, after=after) }}",
             )
             .unwrap();
 
@@ -513,8 +542,8 @@ string: "string""#;
         fn not_in_args() {
             let context = tera::Context::new();
             let mut tera = tera::Tera::default();
-            tera.register_function("render_changes", render_changes);
-            tera.add_raw_template("template", "{{ render_changes() }}")
+            tera.register_function("render_values", tera_render_values);
+            tera.add_raw_template("template", "{{ render_values() }}")
                 .unwrap();
 
             tera.render("template", &context).unwrap_err();
@@ -537,21 +566,26 @@ string: "string""#;
         #[test]
         fn default() {
             let data = tf::tests::get_test_data();
-            let result = render(&data, GITHUB_MARKDOWN_TEMPLATE).unwrap();
+            let mut options = RenderOptions::new();
+            options.insert(
+                "show_changed_values".to_string(),
+                RenderOptionValue::Bool(false),
+            );
+            let result = render(&data, GITHUB_MARKDOWN_TEMPLATE, Some(options)).unwrap();
 
             let expected =
-                utils::test::get_test_data_file_contents("renders/tera/github_markdown.md");
+                utils::test::get_test_data_file_contents("tera/renders/github_markdown/default.md");
             pretty_assertions::assert_eq!(expected, result);
         }
 
         #[test]
         fn invalid_render() {
             let data = tf::tests::get_test_data();
-            let result = render(&data, "{{ incorrect_data }}").unwrap_err();
+            let result = render(&data, "{{ incorrect_data }}", None).unwrap_err();
 
             assert_eq!(
                 result.full_message(),
-                "Failed to render template({{ incorrect_data }}). Failed to render 'template'. Variable `incorrect_data` not found in context while rendering 'template'"
+                "Failed to render template. Failed to render 'template'. Variable `incorrect_data` not found in context while rendering 'template'"
             );
         }
     }
