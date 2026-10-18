@@ -42,10 +42,14 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Expose GitHub Runtime
+        uses: crazy-max/ghaction-github-runtime@04d248b84655b509d8c44dc1d6f990c879747487 # v4.0.0
+
       - name: Build binaries and images
         run: task build:all
         env:
           IMAGE_TAG: ghcr.io/${{ github.repository_owner }}/${{ github.event.repository.name }}:${{ github.event.release.tag_name }}
+          GHA_CACHE: true
 
       - name: Package binaries
         run: task build:package

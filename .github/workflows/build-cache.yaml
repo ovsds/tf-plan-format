@@ -1,0 +1,47 @@
+name: Build Cache
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - src/**
+      - Cargo.toml
+      - Cargo.lock
+      - build/**
+      - Taskfile.yaml
+      - mise.toml
+      - .github/actions/**
+      - .github/workflows/build-cache.yaml
+
+concurrency:
+  group: ${{ github.workflow }}
+  cancel-in-progress: false
+
+jobs:
+  build-cache:
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+
+      - name: Setup Environment
+        uses: $/.github/actions/setup_environment
+
+      - name: Configure Docker Builder
+        run: task build:configure-builder
+
+      - name: Expose GitHub Runtime
+        uses: crazy-max/ghaction-github-runtime@04d248b84655b509d8c44dc1d6f990c879747487 # v4.0.0
+
+      - name: Build binaries and images
+        run: task build:all -- --set image.output=type=cacheonly
+        env:
+          IMAGE_TAG: ${{ github.event.repository.name }}:cache
+          GHA_CACHE: true
