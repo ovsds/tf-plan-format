@@ -2,6 +2,5 @@
 task = "3.54.0"
 node = "24.22.0"
 zizmor = "1.31.1"
-# Listed before rust: rust puts ~/.cargo/bin on PATH, where a cargo-installed cargo-llvm-cov would shadow this one
 "github:taiki-e/cargo-llvm-cov" = "0.9.1"
 rust = { version = "1.99.1", profile = "minimal", components = "clippy,rustfmt,llvm-tools" }

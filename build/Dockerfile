@@ -10,7 +10,6 @@ RUN apt-get update && \
       gcc-aarch64-linux-gnu
 RUN curl -L "https://github.com/roblabla/MacOSX-SDKs/releases/download/13.3/MacOSX13.3.sdk.tar.xz" | tar -J -x -C /opt
 ENV SDKROOT=/opt/MacOSX13.3.sdk
-# psm (through pest) assembles .s files with cc, and gcc cannot target darwin
 ENV CC_x86_64_apple_darwin=clang \
     CC_aarch64_apple_darwin=clang
 
