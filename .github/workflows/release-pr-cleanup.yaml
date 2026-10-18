@@ -5,16 +5,20 @@ on:
     - cron: 0 0 * * 0 # Every Sunday at 00:00 UTC
   workflow_dispatch:
 
+concurrency:
+  group: ${{ github.workflow }}
+  cancel-in-progress: false
+
 jobs:
   release-pr-cleanup:
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-latest
 
     permissions:
       contents: read
       packages: write
 
     steps:
-      - uses: ovsds/package-lifecycle-action@v1
+      - uses: ovsds/package-lifecycle-action@d9231272af5ca6198f837847c441d1072903b185 # v1.0.2
         with:
           package-name: ${{ github.event.repository.name }}-beta
           expire-period-days: 7

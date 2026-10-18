@@ -10,9 +10,9 @@ Terraform Plan Format
 
 ### Global dependencies
 
-- [Taskfile](https://taskfile.dev/installation/)
-- [nvm](https://github.com/nvm-sh/nvm?tab=readme-ov-file#install--update-script)
-- [rust](https://www.rust-lang.org/tools/install)
+- [mise](https://mise.jdx.dev/installing-mise.html), activated in the shell (`eval "$(mise activate zsh)"`)
+
+All other tools are pinned in [mise.toml](mise.toml).
 
 ### Taskfile commands
 

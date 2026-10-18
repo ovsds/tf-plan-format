@@ -7,6 +7,10 @@ on:
       - reopened
       - synchronize
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.number }}
+  cancel-in-progress: true
+
 jobs:
   release-pr:
     runs-on: ubuntu-latest
@@ -18,16 +22,18 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
 
       - name: Setup Environment
-        uses: ./.github/actions/setup_environment
+        uses: $/.github/actions/setup_environment
 
       - name: Configure Docker Builder
         run: task build:configure-builder
 
       - name: Login to GitHub Container Registry
-        uses: docker/login-action@v3
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3.7.0
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
@@ -35,7 +41,10 @@ jobs:
 
       - name: Get Image Tag
         id: get-image-tag
-        run: echo "image-tag=ghcr.io/${{ github.repository_owner }}/${{ github.event.repository.name }}-beta:${{ github.event.number }}-${{ github.event.pull_request.head.sha }}" >> $GITHUB_OUTPUT
+        env:
+          IMAGE_NAME: ghcr.io/${{ github.repository_owner }}/${{ github.event.repository.name }}-beta
+          IMAGE_VERSION: ${{ github.event.number }}-${{ github.event.pull_request.head.sha }}
+        run: echo "image-tag=${IMAGE_NAME}:${IMAGE_VERSION}" >> "$GITHUB_OUTPUT"
 
       - name: Build binaries and images
         run: task build:all
@@ -44,13 +53,13 @@ jobs:
 
       - name: Release binaries
         id: release-binaries
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: binaries
           path: build/bin
 
       - name: Comment on PR
-        uses: ovsds/create-or-update-unique-comment-action@v1
+        uses: ovsds/create-or-update-unique-comment-action@df30f5f96aa71679deb9eb697c98f39ee9e26651 # v1.1.0
         with:
           issue-number: ${{ github.event.number }}
           body: |
