@@ -6,6 +6,15 @@ on:
       - opened
       - reopened
       - synchronize
+    paths:
+      - src/**
+      - Cargo.toml
+      - Cargo.lock
+      - build/**
+      - Taskfile.yaml
+      - mise.toml
+      - .github/actions/**
+      - .github/workflows/release-pr.yaml
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.number }}
@@ -46,10 +55,14 @@ jobs:
           IMAGE_VERSION: ${{ github.event.number }}-${{ github.event.pull_request.head.sha }}
         run: echo "image-tag=${IMAGE_NAME}:${IMAGE_VERSION}" >> "$GITHUB_OUTPUT"
 
+      - name: Expose GitHub Runtime
+        uses: crazy-max/ghaction-github-runtime@04d248b84655b509d8c44dc1d6f990c879747487 # v4.0.0
+
       - name: Build binaries and images
         run: task build:all
         env:
           IMAGE_TAG: ${{ steps.get-image-tag.outputs.image-tag }}
+          GHA_CACHE: true
 
       - name: Release binaries
         id: release-binaries
