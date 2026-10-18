@@ -5,6 +5,7 @@ group "default" {
 target "base" {
   dockerfile = "Dockerfile"
   target = "base"
+  # Rust version kept equal to mise.toml, so released binaries are built with the toolchain CI tests
   contexts = {
     "base_build_image" = "docker-image://docker.io/library/rust:1.99.1-bookworm",
     "sources" = "../",
