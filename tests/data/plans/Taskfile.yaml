@@ -13,7 +13,7 @@ tasks:
       - "{{.CLI}} -chdir={{.DIR}}/target plan -state=../{{.TOOL}}.tfstate -out=../{{.TOOL}}.tfplan"
       - "{{.CLI}} -chdir={{.DIR}}/target show -json ../{{.TOOL}}.tfplan | jq > {{.DIR}}/{{.TOOL}}.tfplan.json"
     status:
-      - find "{{.DIR}}/{{.TOOL}}.tfplan.json"
+      - test -s "{{.DIR}}/{{.TOOL}}.tfplan.json"
     requires:
       vars: ["DIR", "TOOL", "CLI"]
 
