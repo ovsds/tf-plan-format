@@ -4,13 +4,13 @@ COPY --from=sources Cargo.toml Cargo.lock ./
 COPY --from=sources src/ ./src/
 
 RUN apt-get update && \
-    apt-get install -y \
+    apt-get install -y --no-install-recommends \
       clang \
       g++-x86-64-linux-gnu \
       gcc-aarch64-linux-gnu
 RUN curl -L "https://github.com/roblabla/MacOSX-SDKs/releases/download/13.3/MacOSX13.3.sdk.tar.xz" | tar -J -x -C /opt
 ENV SDKROOT=/opt/MacOSX13.3.sdk
-# Dependencies with C or assembly sources (psm through pest) need a C compiler for the darwin targets, gcc has none
+# psm (through pest) assembles .s files with cc, and gcc cannot target darwin
 ENV CC_x86_64_apple_darwin=clang \
     CC_aarch64_apple_darwin=clang
 
