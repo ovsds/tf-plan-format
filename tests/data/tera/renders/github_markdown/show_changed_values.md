@@ -1,4 +1,17 @@
 <details>
+<summary>✅tests/data/plans/create/opentofu.tfplan.json</summary>
+<details>
+<summary>✅terraform_data.foo-bar
+</summary>
+
+```
+input: "foo"
+triggers_replace: null
+```
+
+</details>
+</details>
+<details>
 <summary>✅tests/data/plans/create/terraform.tfplan.json</summary>
 <details>
 <summary>✅terraform_data.foo-bar
@@ -7,6 +20,20 @@
 ```
 input: "foo"
 triggers_replace: null
+```
+
+</details>
+</details>
+<details>
+<summary>♻️tests/data/plans/delete-create/opentofu.tfplan.json</summary>
+<details>
+<summary>♻️null_resource.foo-bar
+</summary>
+
+```
+id: "8077357928023619263" -> null
+triggers:
+  always_run: "2026-10-18T19:59:22Z" -> null
 ```
 
 </details>
@@ -26,6 +53,21 @@ triggers:
 </details>
 </details>
 <details>
+<summary>❌tests/data/plans/delete/opentofu.tfplan.json</summary>
+<details>
+<summary>❌terraform_data.foo-bar
+</summary>
+
+```
+id: "7ab2f2ee-c808-082c-93c7-d2a00826c3e4"
+input: "foo"
+output: "foo"
+triggers_replace: null
+```
+
+</details>
+</details>
+<details>
 <summary>❌tests/data/plans/delete/terraform.tfplan.json</summary>
 <details>
 <summary>❌terraform_data.foo-bar
@@ -33,6 +75,21 @@ triggers:
 
 ```
 id: "96202d3f-5e6b-8c7f-8e5a-7d1599601bd8"
+input: "foo"
+output: "foo"
+triggers_replace: null
+```
+
+</details>
+</details>
+<details>
+<summary>🟰tests/data/plans/no-op/opentofu.tfplan.json</summary>
+<details>
+<summary>🟰terraform_data.foo-bar
+</summary>
+
+```
+id: "70ab275d-63ef-e14a-1bd4-75d2a3a580f7"
 input: "foo"
 output: "foo"
 triggers_replace: null
@@ -56,8 +113,27 @@ triggers_replace: null
 </details>
 </details>
 <details>
+<summary>tests/data/plans/no-resources/opentofu.tfplan.json</summary>
+No resource changes
+</details>
+<details>
 <summary>tests/data/plans/no-resources/terraform.tfplan.json</summary>
 No resource changes
+</details>
+<details>
+<summary>♻️tests/data/plans/sensitive/opentofu.tfplan.json</summary>
+<details>
+<summary>♻️random_bytes.test
+</summary>
+
+```
+base64: sensitive -> null
+hex: sensitive -> null
+keepers: null
+length: 4 -> 8
+```
+
+</details>
 </details>
 <details>
 <summary>♻️tests/data/plans/sensitive/terraform.tfplan.json</summary>
@@ -70,6 +146,21 @@ base64: sensitive -> null
 hex: sensitive -> null
 keepers: null
 length: 4 -> 8
+```
+
+</details>
+</details>
+<details>
+<summary>🔄tests/data/plans/update/opentofu.tfplan.json</summary>
+<details>
+<summary>🔄terraform_data.foo-bar
+</summary>
+
+```
+id: "69e12f7b-2747-94ba-2ead-275f4616c74b"
+input: "foo" -> "bar"
+output: "foo" -> null
+triggers_replace: null
 ```
 
 </details>

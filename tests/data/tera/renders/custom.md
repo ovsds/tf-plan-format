@@ -1,7 +1,14 @@
+tests/data/plans/create/opentofu.tfplan.json
 tests/data/plans/create/terraform.tfplan.json
+tests/data/plans/delete-create/opentofu.tfplan.json
 tests/data/plans/delete-create/terraform.tfplan.json
+tests/data/plans/delete/opentofu.tfplan.json
 tests/data/plans/delete/terraform.tfplan.json
+tests/data/plans/no-op/opentofu.tfplan.json
 tests/data/plans/no-op/terraform.tfplan.json
+tests/data/plans/no-resources/opentofu.tfplan.json
 tests/data/plans/no-resources/terraform.tfplan.json
+tests/data/plans/sensitive/opentofu.tfplan.json
 tests/data/plans/sensitive/terraform.tfplan.json
+tests/data/plans/update/opentofu.tfplan.json
 tests/data/plans/update/terraform.tfplan.json

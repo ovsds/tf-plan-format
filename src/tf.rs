@@ -373,6 +373,13 @@ pub mod tests {
     use super::*;
     use crate::utils;
 
+    #[derive(Clone, Copy)]
+    pub enum Tool {
+        Terraform,
+        OpenTofu,
+    }
+
+    #[derive(Clone, Copy)]
     pub enum PlanType {
         Create,
         Delete,
@@ -383,22 +390,28 @@ pub mod tests {
         Update,
     }
 
-    fn get_test_data_plans() -> Vec<PlanType> {
-        return vec![
-            PlanType::Create,
-            PlanType::Delete,
-            PlanType::DeleteCreate,
-            PlanType::NoOp,
-            PlanType::NoResources,
-            PlanType::Sensitive,
-            PlanType::Update,
-        ];
+    fn get_test_data_plans() -> Vec<(Tool, PlanType)> {
+        let mut plans = Vec::new();
+        for tool in [Tool::Terraform, Tool::OpenTofu] {
+            for plan_type in [
+                PlanType::Create,
+                PlanType::Delete,
+                PlanType::DeleteCreate,
+                PlanType::NoOp,
+                PlanType::NoResources,
+                PlanType::Sensitive,
+                PlanType::Update,
+            ] {
+                plans.push((tool, plan_type));
+            }
+        }
+        return plans;
     }
 
     fn get_test_data_files() -> Vec<String> {
         let mut files = Vec::new();
-        for plan_type in get_test_data_plans() {
-            files.push(get_test_plan_file(&plan_type));
+        for (tool, plan_type) in get_test_data_plans() {
+            files.push(get_test_plan_file(&tool, &plan_type));
         }
         return files;
     }
@@ -406,14 +419,21 @@ pub mod tests {
     pub fn get_test_data() -> Data {
         let mut plans: std::collections::HashMap<String, Plan> = std::collections::HashMap::new();
 
-        for plan_type in get_test_data_plans() {
-            plans.insert(get_test_plan_file(&plan_type), get_test_plan(&plan_type));
+        for (tool, plan_type) in get_test_data_plans() {
+            plans.insert(
+                get_test_plan_file(&tool, &plan_type),
+                get_test_plan(&tool, &plan_type),
+            );
         }
 
         return Data { plans };
     }
 
-    pub fn get_test_plan_file(plan_type: &PlanType) -> String {
+    pub fn get_test_plan_file(tool: &Tool, plan_type: &PlanType) -> String {
+        let file = match tool {
+            Tool::Terraform => "terraform",
+            Tool::OpenTofu => "opentofu",
+        };
         let folder = match plan_type {
             PlanType::Create => "create",
             PlanType::Delete => "delete",
@@ -423,19 +443,17 @@ pub mod tests {
             PlanType::Sensitive => "sensitive",
             PlanType::Update => "update",
         };
-        return utils::test::get_test_data_file_path(&format!(
-            "plans/{folder}/terraform.tfplan.json"
-        ));
+        return utils::test::get_test_data_file_path(&format!("plans/{folder}/{file}.tfplan.json"));
     }
 
-    pub fn get_test_plan(plan_type: &PlanType) -> Plan {
-        let json = get_test_plan_json(plan_type);
+    pub fn get_test_plan(tool: &Tool, plan_type: &PlanType) -> Plan {
+        let json = get_test_plan_json(tool, plan_type);
         let raw = RawPlan::from_str(&json).unwrap();
         return Plan::from_raw(raw);
     }
 
-    pub fn get_test_plan_json(plan_type: &PlanType) -> String {
-        let file = get_test_plan_file(plan_type);
+    pub fn get_test_plan_json(tool: &Tool, plan_type: &PlanType) -> String {
+        let file = get_test_plan_file(tool, plan_type);
         return std::fs::read_to_string(file).unwrap();
     }
 
@@ -795,23 +813,31 @@ pub mod tests {
             use super::*;
 
             macro_rules!tests {
-                ($($name:ident, $plan_type:expr)*) => {
+                ($($name:ident, $tool:expr, $plan_type:expr)*) => {
                     $(
                         #[test]
                         fn $name() {
-                            get_test_plan(&$plan_type);
+                            get_test_plan(&$tool, &$plan_type);
                         }
                     )*
                 };
             }
 
             tests! {
-                create, PlanType::Create
-                delete, PlanType::Delete
-                delete_create, PlanType::DeleteCreate
-                no_op, PlanType::NoOp
-                no_resources, PlanType::NoResources
-                update, PlanType::Update
+                terraform_create, Tool::Terraform, PlanType::Create
+                terraform_delete, Tool::Terraform, PlanType::Delete
+                terraform_delete_create, Tool::Terraform, PlanType::DeleteCreate
+                terraform_no_op, Tool::Terraform, PlanType::NoOp
+                terraform_no_resources, Tool::Terraform, PlanType::NoResources
+                terraform_sensitive, Tool::Terraform, PlanType::Sensitive
+                terraform_update, Tool::Terraform, PlanType::Update
+                opentofu_create, Tool::OpenTofu, PlanType::Create
+                opentofu_delete, Tool::OpenTofu, PlanType::Delete
+                opentofu_delete_create, Tool::OpenTofu, PlanType::DeleteCreate
+                opentofu_no_op, Tool::OpenTofu, PlanType::NoOp
+                opentofu_no_resources, Tool::OpenTofu, PlanType::NoResources
+                opentofu_sensitive, Tool::OpenTofu, PlanType::Sensitive
+                opentofu_update, Tool::OpenTofu, PlanType::Update
             }
 
             #[test]
@@ -877,7 +903,7 @@ pub mod tests {
 
             #[test]
             fn glob() {
-                let files = vec!["tests/data/plans/*/terraform.tfplan.json".to_string()];
+                let files = vec!["tests/data/plans/*/*.tfplan.json".to_string()];
                 let data = Data::from_files(&files).unwrap();
                 assert_eq!(data, get_test_data());
             }
