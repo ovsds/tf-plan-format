@@ -1,25 +1,29 @@
 version: 3
 
+vars:
+  # The sources context is the repository root, outside this directory, which buildx bake only reads when allowed
+  BAKE: docker buildx bake --allow=fs.read=..
+
 tasks:
   all:
     desc: Build all targets
     dir: "{{.TASKFILE_DIR}}"
     cmds:
-      - docker buildx bake {{.CLI_ARGS}}
+      - "{{.BAKE}} {{.CLI_ARGS}}"
 
   binaries:
     desc: Build binaries
     dir: "{{.TASKFILE_DIR}}"
     cmds:
       - echo 'Building project for all platforms...'
-      - docker buildx bake bin {{.CLI_ARGS}}
+      - "{{.BAKE}} bin {{.CLI_ARGS}}"
 
   image:
     desc: Build docker image
     dir: "{{.TASKFILE_DIR}}"
     cmds:
       - echo 'Building docker image...'
-      - docker buildx bake image {{.CLI_ARGS}}
+      - "{{.BAKE}} image {{.CLI_ARGS}}"
     env:
       IMAGE_TAG: '{{.IMAGE_TAG | default "tf-plan-format:test"}}'
 
@@ -28,7 +32,7 @@ tasks:
     desc: Build docker for local platform
     cmds:
       - echo 'Building docker image locally...'
-      - docker buildx bake image-local {{.CLI_ARGS}}
+      - "{{.BAKE}} image-local {{.CLI_ARGS}}"
     env:
       IMAGE_TAG: '{{.IMAGE_TAG | default "tf-plan-format:test"}}'
 
