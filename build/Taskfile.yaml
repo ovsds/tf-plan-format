@@ -1,40 +1,44 @@
 version: 3
 
-vars:
-  # The sources context is the repository root, outside this directory, which buildx bake only reads when allowed
-  BAKE: docker buildx bake --allow=fs.read=..
-
 tasks:
-  all:
-    desc: Build all targets
+  _bake:
+    internal: true
     dir: "{{.TASKFILE_DIR}}"
     cmds:
-      - "{{.BAKE}} {{.CLI_ARGS}}"
+      - docker buildx bake --allow=fs.read=.. {{.COMMAND}}
+    env:
+      IMAGE_TAG: "{{.IMAGE_TAG}}"
+
+  all:
+    desc: Build all targets
+    cmds:
+      - task: _bake
+        vars: { COMMAND: "{{.CLI_ARGS}}" }
 
   binaries:
     desc: Build binaries
-    dir: "{{.TASKFILE_DIR}}"
     cmds:
       - echo 'Building project for all platforms...'
-      - "{{.BAKE}} bin {{.CLI_ARGS}}"
+      - task: _bake
+        vars: { COMMAND: "bin {{.CLI_ARGS}}" }
 
   image:
     desc: Build docker image
-    dir: "{{.TASKFILE_DIR}}"
     cmds:
       - echo 'Building docker image...'
-      - "{{.BAKE}} image {{.CLI_ARGS}}"
-    env:
-      IMAGE_TAG: '{{.IMAGE_TAG | default "tf-plan-format:test"}}'
+      - task: _bake
+        vars:
+          COMMAND: "image {{.CLI_ARGS}}"
+          IMAGE_TAG: '{{.IMAGE_TAG | default "tf-plan-format:test"}}'
 
   image-local:
-    dir: "{{.TASKFILE_DIR}}"
     desc: Build docker for local platform
     cmds:
       - echo 'Building docker image locally...'
-      - "{{.BAKE}} image-local {{.CLI_ARGS}}"
-    env:
-      IMAGE_TAG: '{{.IMAGE_TAG | default "tf-plan-format:test"}}'
+      - task: _bake
+        vars:
+          COMMAND: "image-local {{.CLI_ARGS}}"
+          IMAGE_TAG: '{{.IMAGE_TAG | default "tf-plan-format:test"}}'
 
   clean:
     desc: Clean build artifacts
