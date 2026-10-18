@@ -6,7 +6,6 @@ on:
       - opened
       - reopened
       - synchronize
-  # Keeps the README CI badge reporting main
   push:
     branches:
       - main
