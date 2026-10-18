@@ -5,7 +5,9 @@
 </summary>
 
 ```
+id: (known after apply)
 input: "foo"
+output: (known after apply)
 triggers_replace: null
 ```
 
@@ -18,7 +20,9 @@ triggers_replace: null
 </summary>
 
 ```
+id: (known after apply)
 input: "foo"
+output: (known after apply)
 triggers_replace: null
 ```
 
@@ -31,9 +35,9 @@ triggers_replace: null
 </summary>
 
 ```
-id: "8077357928023619263" -> null
+id: "8077357928023619263" -> (known after apply)
 triggers:
-  always_run: "2026-10-18T19:59:22Z" -> null
+  always_run: "2026-10-18T19:59:22Z" -> (known after apply)
 ```
 
 </details>
@@ -45,9 +49,9 @@ triggers:
 </summary>
 
 ```
-id: "4525788878524015586" -> null
+id: "4525788878524015586" -> (known after apply)
 triggers:
-  always_run: "2024-10-25T21:40:19Z" -> null
+  always_run: "2024-10-25T21:40:19Z" -> (known after apply)
 ```
 
 </details>
@@ -121,8 +125,8 @@ No resource changes
 </summary>
 
 ```
-base64: sensitive -> null
-hex: sensitive -> null
+base64: sensitive -> sensitive
+hex: sensitive -> sensitive
 length: 4 -> 8
 ```
 
@@ -135,8 +139,8 @@ length: 4 -> 8
 </summary>
 
 ```
-base64: sensitive -> null
-hex: sensitive -> null
+base64: sensitive -> sensitive
+hex: sensitive -> sensitive
 length: 4 -> 8
 ```
 
@@ -150,7 +154,7 @@ length: 4 -> 8
 
 ```
 input: "foo" -> "bar"
-output: "foo" -> null
+output: "foo" -> (known after apply)
 ```
 
 </details>
@@ -163,7 +167,7 @@ output: "foo" -> null
 
 ```
 input: "foo" -> "bar"
-output: "foo" -> null
+output: "foo" -> (known after apply)
 ```
 
 </details>

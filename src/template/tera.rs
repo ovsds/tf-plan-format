@@ -65,7 +65,8 @@ fn tera_render_actions(args: &Args) -> tera::Result<tera::Value> {
 
 fn render_plaintext(value: &tf::Value) -> String {
     match value {
-        tf::Value::Sensitive => "sensitive".to_string(),
+        tf::Value::Sensitive | tf::Value::SensitiveUnknown => "sensitive".to_string(),
+        tf::Value::Unknown => "(known after apply)".to_string(),
         tf::Value::String(value) => format!("{}", tera::to_value(value).unwrap()),
         tf::Value::Integer(value) => format!("{}", tera::to_value(value).unwrap()),
         tf::Value::Float(value) => format!("{}", tera::to_value(value).unwrap()),
@@ -529,6 +530,106 @@ object:
 object_to_null:
   inner_integer: 42
 string: "string""#;
+            pretty_assertions::assert_eq!(result, expected);
+        }
+
+        fn get_unknown_before() -> tf::ValueMap {
+            let mut map = std::collections::HashMap::new();
+            map.insert("string".to_string(), tf::Value::String("abc".to_string()));
+            map.insert("sensitive".to_string(), tf::Value::Sensitive);
+            map.insert("same".to_string(), tf::Value::Integer(42));
+            map.insert("object".to_string(), {
+                let mut map = std::collections::HashMap::new();
+                map.insert("inner".to_string(), tf::Value::Integer(42));
+                tf::Value::Object(map)
+            });
+            map
+        }
+
+        fn get_unknown_after() -> tf::ValueMap {
+            let mut map = std::collections::HashMap::new();
+            map.insert("string".to_string(), tf::Value::Unknown);
+            map.insert("sensitive".to_string(), tf::Value::SensitiveUnknown);
+            map.insert("same".to_string(), tf::Value::Integer(42));
+            map.insert("new".to_string(), tf::Value::Unknown);
+            map.insert(
+                "array".to_string(),
+                tf::Value::Array(vec![tf::Value::Integer(42), tf::Value::Unknown]),
+            );
+            map.insert("object".to_string(), {
+                let mut map = std::collections::HashMap::new();
+                map.insert("inner".to_string(), tf::Value::Unknown);
+                tf::Value::Object(map)
+            });
+            map
+        }
+
+        fn test_show_changed_values(
+            before: Option<tf::ValueMap>,
+            after: Option<tf::ValueMap>,
+            show_changed_values: bool,
+        ) -> String {
+            let mut tera = tera::Tera::default();
+            tera.register_function("render_values", tera_render_values);
+            tera.add_raw_template(
+                "template",
+                "{{ render_values(before=before, after=after, show_changed_values=show_changed_values) }}",
+            )
+            .unwrap();
+
+            let mut context = tera::Context::new();
+            context.insert("before", &before);
+            context.insert("after", &after);
+            context.insert("show_changed_values", &show_changed_values);
+            tera.render("template", &context).unwrap()
+        }
+
+        #[test]
+        fn after_unknown() {
+            let result = test(None, Some(get_unknown_after())).unwrap();
+
+            let expected = r#"array: [42, (known after apply)]
+new: (known after apply)
+object:
+  inner: (known after apply)
+same: 42
+sensitive: sensitive
+string: (known after apply)"#;
+            pretty_assertions::assert_eq!(result, expected);
+        }
+
+        #[test]
+        fn before_after_unknown() {
+            let result = test_show_changed_values(
+                Some(get_unknown_before()),
+                Some(get_unknown_after()),
+                true,
+            );
+
+            let expected = r#"array: null -> [42, (known after apply)]
+new: null -> (known after apply)
+object:
+  inner: 42 -> (known after apply)
+same: 42
+sensitive: sensitive -> sensitive
+string: "abc" -> (known after apply)"#;
+            pretty_assertions::assert_eq!(result, expected);
+        }
+
+        #[test]
+        fn before_after_unknown_hide_unchanged() {
+            let result = test_show_changed_values(
+                Some(get_unknown_before()),
+                Some(get_unknown_after()),
+                false,
+            );
+
+            let expected = r#"array: null -> [42, (known after apply)]
+new: null -> (known after apply)
+object:
+  inner: 42 -> (known after apply)
+sensitive: sensitive -> sensitive
+string: "abc" -> (known after apply)"#;
             pretty_assertions::assert_eq!(result, expected);
         }
 
