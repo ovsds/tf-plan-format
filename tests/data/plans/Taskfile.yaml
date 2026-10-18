@@ -5,6 +5,7 @@ silent: true
 tasks:
   _generate:
     internal: true
+    set: [pipefail]
     cmds:
       - "{{.CLI}} -chdir={{.DIR}}/initial init"
       - "{{.CLI}} -chdir={{.DIR}}/initial apply -state-out=../{{.TOOL}}.tfstate -auto-approve"
