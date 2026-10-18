@@ -2,6 +2,20 @@ group "default" {
   targets = ["bin", "image"]
 }
 
+variable "GHA_CACHE" {
+  default = false
+}
+
+function "cache_from" {
+  params = [scope]
+  result = GHA_CACHE ? ["type=gha,scope=${scope}"] : []
+}
+
+function "cache_to" {
+  params = [scope]
+  result = GHA_CACHE ? ["type=gha,scope=${scope},mode=max,ignore-error=true"] : []
+}
+
 target "base" {
   dockerfile = "Dockerfile"
   target = "base"
@@ -21,6 +35,8 @@ target "bin" {
   inherits = ["bin-base"]
   name = "bin-${item.name}"
   output = ["type=local,dest=bin/${item.name}"]
+  cache-from = cache_from("bin-${item.name}")
+  cache-to = cache_to("bin-${item.name}")
   args = {
     RUST_TARGET = "${item.rust_target}",
     RUST_LINKER = "${item.rust_linker}",
@@ -56,7 +72,12 @@ variable "IMAGE_TAG" {}
 target "image" {
   inherits = ["base"]
   target = "image"
+  args = {
+    TOOLCHAIN = "static",
+  }
   output = ["type=registry"]
+  cache-from = cache_from("image")
+  cache-to = cache_to("image")
   tags = [IMAGE_TAG]
   platforms = ["linux/amd64", "linux/arm64"]
 }
