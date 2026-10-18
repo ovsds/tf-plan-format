@@ -6,6 +6,15 @@ on:
       - opened
       - reopened
       - synchronize
+    paths:
+      - src/**
+      - Cargo.toml
+      - Cargo.lock
+      - build/**
+      - Taskfile.yaml
+      - mise.toml
+      - .github/actions/**
+      - .github/workflows/release-pr.yaml
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.number }}
