@@ -4,7 +4,7 @@ COPY --from=sources Cargo.toml Cargo.lock ./
 COPY --from=sources src/ ./src/
 
 RUN apt-get update && \
-    apt-get install -y --no-install-recommends \
+    apt-get install -y \
       clang \
       g++-x86-64-linux-gnu \
       gcc-aarch64-linux-gnu
