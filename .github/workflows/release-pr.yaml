@@ -41,7 +41,10 @@ jobs:
 
       - name: Get Image Tag
         id: get-image-tag
-        run: echo "image-tag=ghcr.io/${{ github.repository_owner }}/${{ github.event.repository.name }}-beta:${{ github.event.number }}-${{ github.event.pull_request.head.sha }}" >> "$GITHUB_OUTPUT"
+        env:
+          IMAGE_NAME: ghcr.io/${{ github.repository_owner }}/${{ github.event.repository.name }}-beta
+          IMAGE_VERSION: ${{ github.event.number }}-${{ github.event.pull_request.head.sha }}
+        run: echo "image-tag=${IMAGE_NAME}:${IMAGE_VERSION}" >> "$GITHUB_OUTPUT"
 
       - name: Build binaries and images
         run: task build:all
@@ -50,7 +53,7 @@ jobs:
 
       - name: Release binaries
         id: release-binaries
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: binaries
           path: build/bin
