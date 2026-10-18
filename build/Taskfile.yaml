@@ -46,9 +46,9 @@ tasks:
       vars: [VERSION]
     vars:
       CARGO_VERSION:
-        sh: cargo metadata --no-deps --format-version 1 --manifest-path {{.ROOT_DIR}}/Cargo.toml | jq -r '.packages[0].version'
+        sh: cargo metadata --no-deps --format-version 1 --manifest-path {{.TASKFILE_DIR}}/../Cargo.toml | jq -r '.packages[0].version'
     preconditions:
-      - sh: '[ "{{.VERSION}}" = "{{.CARGO_VERSION}}" ]'
+      - sh: "[ {{shellQuote .VERSION}} = {{shellQuote .CARGO_VERSION}} ]"
         msg: "Version {{.VERSION}} differs from Cargo.toml version {{.CARGO_VERSION}}"
 
   _package-binary:
