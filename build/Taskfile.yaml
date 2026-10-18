@@ -40,11 +40,51 @@ tasks:
           COMMAND: "image-local {{.CLI_ARGS}}"
           IMAGE_TAG: '{{.IMAGE_TAG | default "tf-plan-format:test"}}'
 
+  check-version:
+    desc: Check that VERSION matches the Cargo.toml package version
+    requires:
+      vars: [VERSION]
+    vars:
+      CARGO_VERSION:
+        sh: cargo metadata --no-deps --format-version 1 --manifest-path {{.TASKFILE_DIR}}/../Cargo.toml | jq -r '.packages[0].version'
+    preconditions:
+      - sh: "[ {{shellQuote .VERSION}} = {{shellQuote .CARGO_VERSION}} ]"
+        msg: "Version {{.VERSION}} differs from Cargo.toml version {{.CARGO_VERSION}}"
+
+  _package-binary:
+    internal: true
+    dir: "{{.TASKFILE_DIR}}"
+    cmds:
+      - tar -czf dist/tf_plan_format-{{.VERSION}}-{{.PLATFORM}}.tar.gz -C bin/{{.PLATFORM}} tf_plan_format
+
+  package:
+    desc: Package built binaries into release archives with a checksums file
+    requires:
+      vars: [VERSION]
+    dir: "{{.TASKFILE_DIR}}"
+    cmds:
+      - echo 'Packaging binaries...'
+      - rm -rf dist
+      - mkdir dist
+      - for: [linux-amd64, linux-arm64, darwin-amd64, darwin-arm64]
+        task: _package-binary
+        vars: { PLATFORM: "{{.ITEM}}", VERSION: "{{.VERSION}}" }
+      - cd dist && shasum -a 256 *.tar.gz > checksums.txt
+
+  upload:
+    desc: Upload packaged archives and checksums to the VERSION GitHub release
+    requires:
+      vars: [VERSION]
+    dir: "{{.TASKFILE_DIR}}/dist"
+    cmds:
+      - echo 'Uploading release assets...'
+      - gh release upload {{.VERSION}} *.tar.gz checksums.txt --clobber
+
   clean:
     desc: Clean build artifacts
     cmds:
-      - echo 'Cleaning binaries...'
-      - rm -rf {{.TASKFILE_DIR}}/bin
+      - echo 'Cleaning binaries and archives...'
+      - rm -rf {{.TASKFILE_DIR}}/bin {{.TASKFILE_DIR}}/dist
 
   configure-builder:
     desc: Configure buildx for multi-arch builds
