@@ -2,5 +2,7 @@
 task = "3.54.0"
 node = "24.22.0"
 zizmor = "1.31.1"
+terraform = "1.7.5"
+opentofu = "1.13.1"
 "github:taiki-e/cargo-llvm-cov" = "0.9.1"
 rust = { version = "1.99.1", profile = "minimal", components = "clippy,rustfmt,llvm-tools" }

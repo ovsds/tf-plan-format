@@ -3,3 +3,6 @@
 terraform.tfplan
 terraform.tfstate
 terraform.tfstate.backup
+opentofu.tfplan
+opentofu.tfstate
+opentofu.tfstate.backup
