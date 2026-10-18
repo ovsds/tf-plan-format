@@ -1,0 +1,60 @@
+{
+  "format_version": "1.2",
+  "terraform_version": "1.13.1",
+  "planned_values": {
+    "root_module": {}
+  },
+  "resource_changes": [
+    {
+      "address": "terraform_data.foo-bar",
+      "mode": "managed",
+      "type": "terraform_data",
+      "name": "foo-bar",
+      "provider_name": "terraform.io/builtin/terraform",
+      "change": {
+        "actions": ["delete"],
+        "before": {
+          "id": "7ab2f2ee-c808-082c-93c7-d2a00826c3e4",
+          "input": "foo",
+          "output": "foo",
+          "triggers_replace": null
+        },
+        "after": null,
+        "after_unknown": {},
+        "before_sensitive": {},
+        "after_sensitive": false
+      },
+      "action_reason": "delete_because_no_resource_config"
+    }
+  ],
+  "prior_state": {
+    "format_version": "1.0",
+    "terraform_version": "1.13.1",
+    "values": {
+      "root_module": {
+        "resources": [
+          {
+            "address": "terraform_data.foo-bar",
+            "mode": "managed",
+            "type": "terraform_data",
+            "name": "foo-bar",
+            "provider_name": "terraform.io/builtin/terraform",
+            "schema_version": 0,
+            "values": {
+              "id": "7ab2f2ee-c808-082c-93c7-d2a00826c3e4",
+              "input": "foo",
+              "output": "foo",
+              "triggers_replace": null
+            },
+            "sensitive_values": {}
+          }
+        ]
+      }
+    }
+  },
+  "configuration": {
+    "root_module": {}
+  },
+  "timestamp": "2026-10-18T19:59:05Z",
+  "errored": false
+}

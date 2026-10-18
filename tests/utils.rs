@@ -15,13 +15,21 @@ pub fn get_test_data_file_contents(relative_path: &str) -> std::string::String {
 
 #[must_use]
 pub fn get_plan_files() -> Vec<std::string::String> {
-    vec![
-        get_test_data_file_path("plans/create/terraform.tfplan.json"),
-        get_test_data_file_path("plans/delete/terraform.tfplan.json"),
-        get_test_data_file_path("plans/delete-create/terraform.tfplan.json"),
-        get_test_data_file_path("plans/no-op/terraform.tfplan.json"),
-        get_test_data_file_path("plans/no-resources/terraform.tfplan.json"),
-        get_test_data_file_path("plans/sensitive/terraform.tfplan.json"),
-        get_test_data_file_path("plans/update/terraform.tfplan.json"),
-    ]
+    let mut files = Vec::new();
+    for tool in ["terraform", "opentofu"] {
+        for plan in [
+            "create",
+            "delete",
+            "delete-create",
+            "no-op",
+            "no-resources",
+            "sensitive",
+            "update",
+        ] {
+            files.push(get_test_data_file_path(&format!(
+                "plans/{plan}/{tool}.tfplan.json"
+            )));
+        }
+    }
+    files
 }

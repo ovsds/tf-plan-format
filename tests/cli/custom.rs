@@ -35,7 +35,7 @@ fn glob() -> Result<(), Box<dyn std::error::Error>> {
     cmd.arg("--engine").arg("tera");
 
     cmd.arg("--file").arg(format!(
-        "{}/plans/*/terraform.tfplan.json",
+        "{}/plans/*/*.tfplan.json",
         utils::TEST_DATA_FOLDER_PATH
     ));
 
