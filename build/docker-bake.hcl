@@ -6,7 +6,7 @@ target "base" {
   dockerfile = "Dockerfile"
   target = "base"
   contexts = {
-    "base_build_image" = "docker-image://docker.io/library/rust:1.82.0-bookworm",
+    "base_build_image" = "docker-image://docker.io/library/rust:1.99.1-bookworm",
     "sources" = "../",
   }
 }

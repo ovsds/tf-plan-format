@@ -116,7 +116,7 @@ impl Action {
             && actions.contains(&RawResourceChangeChangeAction::Delete)
         {
             return Action::DeleteCreate;
-        };
+        }
         if actions.len() == 1 {
             return match actions[0] {
                 RawResourceChangeChangeAction::Create => Action::Create,
