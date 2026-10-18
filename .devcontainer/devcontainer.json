@@ -8,5 +8,6 @@
       }
     }
   },
-  "dockerFile": "Dockerfile"
+  "dockerFile": "Dockerfile",
+  "postCreateCommand": "mise trust && mise install && task init"
 }
