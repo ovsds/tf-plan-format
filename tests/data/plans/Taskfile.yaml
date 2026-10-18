@@ -2,23 +2,24 @@ version: 3
 
 silent: true
 
-includes:
-  terraform:
-    taskfile: ../../../.shims/terraform
-
 tasks:
+  _terraform:
+    internal: true
+    cmds:
+      - terraform {{.COMMAND}}
+
   generate:
     desc: Generate diff plan for directory, expects target folder with terraform files and terraform.tfstate
     cmds:
-      - task: terraform:run
+      - task: _terraform
         vars: { COMMAND: "-chdir={{.DIR}}/initial init" }
-      - task: terraform:run
+      - task: _terraform
         vars: { COMMAND: "-chdir={{.DIR}}/initial apply -state-out=../terraform.tfstate -auto-approve" }
-      - task: terraform:run
+      - task: _terraform
         vars: { COMMAND: "-chdir={{.DIR}}/target init" }
-      - task: terraform:run
+      - task: _terraform
         vars: { COMMAND: "-chdir={{.DIR}}/target plan -state=../terraform.tfstate -out=../terraform.tfplan" }
-      - task: terraform:run
+      - task: _terraform
         vars: { COMMAND: "-chdir={{.DIR}}/target show -json ../terraform.tfplan | jq > {{.DIR}}/terraform.tfplan.json" }
     status:
       - find "{{.DIR}}/terraform.tfplan.json"
