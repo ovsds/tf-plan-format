@@ -67,27 +67,50 @@ pub fn render_github(
         return Ok(result);
     };
 
+    let blocks = get_values_blocks(data, &hidden_actions, show_changed_values);
     let mut limits = Limits::new(max_length, data.plans.len());
-    let mut blocks = get_values_blocks(data, &hidden_actions, show_changed_values).into_iter();
-    while result.len() > max_length && blocks.len() > 0 {
-        // The savings estimate the re-render, which also accounts for the note
-        let excess = result.len() - max_length;
-        let mut saving = 0;
-        for block in blocks.by_ref() {
-            saving += block.saving;
-            limits.collapse(&block);
-            if saving >= excess {
-                break;
-            }
-        }
-        result = render(Some(&limits))?;
-    }
+    result = collapse_until_fits(&mut limits, &blocks, result, |limits| render(Some(limits)))?;
     if result.len() > max_length {
         limits.plan_count = get_fitting_plan_count(limits.plan_count, |plan_count| {
             limits.plan_count = plan_count;
             Ok(render(Some(&limits))?.len() <= max_length)
         })?;
+        // Collapsing everything was needed only before plans were dropped: the kept plans may fit with less
+        let plan_count = limits.plan_count;
+        limits = Limits::new(max_length, data.plans.len());
+        limits.plan_count = plan_count;
+        let kept_blocks: Vec<&ValuesBlock> = blocks
+            .iter()
+            .filter(|block| block.plan < plan_count)
+            .collect();
         result = render(Some(&limits))?;
+        result = collapse_until_fits(&mut limits, &kept_blocks, result, |limits| {
+            render(Some(limits))
+        })?;
+    }
+    Ok(result)
+}
+
+/// Collapses blocks largest first until the output fits or every block is collapsed
+fn collapse_until_fits<B: std::borrow::Borrow<ValuesBlock>>(
+    limits: &mut Limits,
+    blocks: &[B],
+    mut result: String,
+    render: impl Fn(&Limits) -> Result<String, types::Error>,
+) -> Result<String, types::Error> {
+    let mut blocks = blocks.iter().map(std::borrow::Borrow::borrow);
+    while result.len() > limits.max_length && blocks.len() > 0 {
+        // The savings estimate the re-render, which also accounts for the note
+        let excess = result.len() - limits.max_length;
+        let mut saving = 0;
+        for block in blocks.by_ref() {
+            saving += block.saving;
+            limits.collapse(block);
+            if saving >= excess {
+                break;
+            }
+        }
+        result = render(limits)?;
     }
     Ok(result)
 }
@@ -393,11 +416,12 @@ mod tests {
             let result = render_capped(&data, 2000);
 
             assert!(result.len() <= 2000);
-            assert!(!result.contains("```"));
+            // The kept plans show again the values that fit once the last plans are dropped
+            assert!(result.contains("```"));
             assert!(result.contains("no-resources/terraform.tfplan.json - "));
             assert!(!result.contains("outputs/opentofu.tfplan.json - "));
             assert_eq!(
-                "_Output limited to 2000 bytes: the last 10 plans and values of 6 changes not shown_",
+                "_Output limited to 2000 bytes: the last 10 plans and values of 4 changes not shown_",
                 get_note(&result)
             );
         }
