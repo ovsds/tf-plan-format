@@ -8,17 +8,23 @@ fail() {
 
 download() {
     curl --fail --silent --show-error --location --retry 3 --output "$2" "$1" ||
-        fail "could not download $1, check that the release exists"
+        fail "could not download $1, check that the release exists; a new release uploads its files for a few minutes"
 }
 
 # Everything runs from main so that a truncated `curl | bash` download executes nothing.
 main() {
-    if [[ $# -lt 1 || -z "$1" ]]; then
-        echo "usage: setup.sh <version> [<install dir>]" >&2
-        exit 2
-    fi
-    local version="$1"
+    local version="${1:-latest}"
     local install_dir="${2:-${HOME}/.local/bin}"
+
+    if [[ "${version}" == "latest" ]]; then
+        # The latest release page redirects to its tag: no API call, no token
+        local latest_url
+        latest_url="$(curl --fail --silent --show-error --location --retry 3 --head --output /dev/null \
+            --write-out '%{url_effective}' https://github.com/ovsds/tf-plan-format/releases/latest)" ||
+            fail "could not resolve the latest release"
+        [[ "${latest_url}" == */releases/tag/* ]] || fail "could not resolve the latest release: got ${latest_url}"
+        version="${latest_url##*/}"
+    fi
 
     local kernel machine os arch
     kernel="$(uname -s)"

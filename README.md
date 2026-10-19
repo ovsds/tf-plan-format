@@ -8,14 +8,12 @@ Terraform Plan Format
 
 ### Install script
 
-[setup.sh](setup.sh) downloads the release archive for your platform (Linux or macOS, amd64 or arm64), checks it against the release's `checksums.txt` and installs `tf_plan_format` into `~/.local/bin`, or into the directory given as the second argument:
+[setup.sh](setup.sh) downloads the release archive for your platform (Linux or macOS, amd64 or arm64), checks it against the release's `checksums.txt` and installs `tf_plan_format` into `~/.local/bin`, or into the directory given as the second argument. The first argument is the version, the latest release when omitted or `latest`:
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/ovsds/tf-plan-format/0.2.0/setup.sh | bash -s -- 0.2.0
-curl -fsSL https://raw.githubusercontent.com/ovsds/tf-plan-format/0.2.0/setup.sh | bash -s -- 0.2.0 "$HOME/bin"
+curl -fsSL https://raw.githubusercontent.com/ovsds/tf-plan-format/main/setup.sh | bash
+curl -fsSL https://raw.githubusercontent.com/ovsds/tf-plan-format/main/setup.sh | bash -s -- 0.2.0 "$HOME/bin"
 ```
-
-The script ships from release `0.2.0` on.
 
 ## Usage
 
