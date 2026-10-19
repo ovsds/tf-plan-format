@@ -1,4 +1,5 @@
 use crate::types;
+use itertools::Itertools;
 use serde::{Deserialize, Serialize};
 use std::str::FromStr;
 
@@ -27,6 +28,7 @@ pub enum Value {
     Object(ValueMap),
     Null,
     Sensitive,
+    SensitiveChanged,
     Unknown,
     SensitiveUnknown,
 }
@@ -170,12 +172,23 @@ pub struct RawResourceChange {
     pub change: RawResourceChangeChange,
 }
 
+#[derive(Serialize, Deserialize, Debug, PartialEq, Clone)]
+pub struct RawOutputChange {
+    pub actions: Vec<RawResourceChangeChangeAction>,
+    pub before: Option<RawValue>,
+    pub after: Option<RawValue>,
+    pub after_unknown: Option<BoolValue>,
+    pub before_sensitive: Option<BoolValue>,
+    pub after_sensitive: Option<BoolValue>,
+}
+
 #[derive(Serialize, Deserialize, Debug, PartialEq)]
 pub struct RawPlan {
     // format_version: String,
     // terraform_version: String,
     // planned_values
     pub resource_changes: Option<Vec<RawResourceChange>>,
+    pub output_changes: Option<std::collections::HashMap<String, RawOutputChange>>,
     // configuration
     // timestamp: String,
     // errored: bool,
@@ -232,7 +245,10 @@ fn is_flagged(flag: &BoolValue) -> bool {
 
 fn mask_sensitive(value: Value, sensitive: &BoolValue) -> Value {
     match (value.clone(), sensitive) {
-        (Value::Object(value_map), _) => Value::Object(mask_sensitive_map(value_map, sensitive)),
+        // A whole value flagged sensitive is masked whole: masking key by key would show the keys
+        (Value::Object(value_map), _) if !is_flagged(sensitive) => {
+            Value::Object(mask_sensitive_map(value_map, sensitive))
+        }
         (Value::Array(value_array), BoolValue::Array(sensitive_array)) => {
             Value::Array(mask_sensitive_array(value_array, sensitive_array))
         }
@@ -319,34 +335,110 @@ fn mark_unknown_map(mut value_map: ValueMap, unknown: &BoolValue) -> ValueMap {
     value_map
 }
 
+// Masked on both sides, a changed secret would compare equal to its old value and be hidden as unchanged
+fn mark_sensitive_changes(
+    before: &Value,
+    after: Value,
+    raw_before: &RawValue,
+    raw_after: &RawValue,
+) -> Value {
+    match (before, after, raw_before, raw_after) {
+        (Value::Sensitive, Value::Sensitive, raw_before, raw_after) if raw_before != raw_after => {
+            Value::SensitiveChanged
+        }
+        (
+            Value::Object(before),
+            Value::Object(after),
+            RawValue::Object(raw_before),
+            RawValue::Object(raw_after),
+        ) => Value::Object(mark_sensitive_changes_map(
+            before, after, raw_before, raw_after,
+        )),
+        // Elements pair by index only while no insertion or removal shifted them
+        (
+            Value::Array(before),
+            Value::Array(after),
+            RawValue::Array(raw_before),
+            RawValue::Array(raw_after),
+        ) if raw_before.len() == raw_after.len() => Value::Array(
+            after
+                .into_iter()
+                .enumerate()
+                .map(|(index, after)| {
+                    match (
+                        before.get(index),
+                        raw_before.get(index),
+                        raw_after.get(index),
+                    ) {
+                        (Some(before), Some(raw_before), Some(raw_after)) => {
+                            mark_sensitive_changes(before, after, raw_before, raw_after)
+                        }
+                        _ => after,
+                    }
+                })
+                .collect(),
+        ),
+        (_, after, _, _) => after,
+    }
+}
+
+fn mark_sensitive_changes_map(
+    before: &ValueMap,
+    mut after: ValueMap,
+    raw_before: &RawValueMap,
+    raw_after: &RawValueMap,
+) -> ValueMap {
+    for (key, value) in &mut after {
+        if let (Some(before), Some(raw_before), Some(raw_after)) =
+            (before.get(key), raw_before.get(key), raw_after.get(key))
+        {
+            *value = mark_sensitive_changes(
+                before,
+                std::mem::replace(value, Value::Null),
+                raw_before,
+                raw_after,
+            );
+        }
+    }
+    after
+}
+
+const NOT_FLAGGED: &BoolValue = &BoolValue::Boolean(false);
+
+fn values_from_raw(
+    raw_before: Option<&RawValueMap>,
+    raw_after: Option<&RawValueMap>,
+    before_sensitive: &BoolValue,
+    after_sensitive: &BoolValue,
+    after_unknown: &BoolValue,
+) -> (Option<ValueMap>, Option<ValueMap>) {
+    let before =
+        raw_before.map(|raw| mask_sensitive_map(value_map_from_raw(raw), before_sensitive));
+    let after = raw_after.map(|raw| {
+        mask_sensitive_map(
+            mark_unknown_map(value_map_from_raw(raw), after_unknown),
+            after_sensitive,
+        )
+    });
+    let after = match (&before, after, raw_before, raw_after) {
+        (Some(before), Some(after), Some(raw_before), Some(raw_after)) => Some(
+            mark_sensitive_changes_map(before, after, raw_before, raw_after),
+        ),
+        (_, after, _, _) => after,
+    };
+    (before, after)
+}
+
 impl Change {
     #[must_use]
     pub fn from_raw(raw: RawResourceChange) -> Self {
-        let before_sensitive = raw
-            .change
-            .before_sensitive
-            .as_ref()
-            .unwrap_or(&BoolValue::Boolean(false));
-        let after_sensitive = raw
-            .change
-            .after_sensitive
-            .as_ref()
-            .unwrap_or(&BoolValue::Boolean(false));
-        let after_unknown = raw
-            .change
-            .after_unknown
-            .as_ref()
-            .unwrap_or(&BoolValue::Boolean(false));
-
-        let raw_before = raw.change.before.as_ref();
-        let unmasked_before = raw_before.map(value_map_from_raw);
-        let before = unmasked_before.map(|before| mask_sensitive_map(before, before_sensitive));
-
-        let raw_after = raw.change.after.as_ref();
-        let unmasked_after = raw_after.map(value_map_from_raw);
-        let after = unmasked_after.map(|after| {
-            mask_sensitive_map(mark_unknown_map(after, after_unknown), after_sensitive)
-        });
+        let (before, after) = values_from_raw(
+            raw.change.before.as_ref(),
+            raw.change.after.as_ref(),
+            raw.change.before_sensitive.as_ref().unwrap_or(NOT_FLAGGED),
+            raw.change.after_sensitive.as_ref().unwrap_or(NOT_FLAGGED),
+            raw.change.after_unknown.as_ref().unwrap_or(NOT_FLAGGED),
+        );
 
         Change {
             address: raw.address.clone(),
@@ -359,10 +451,99 @@ impl Change {
     }
 }
 
+#[derive(Serialize, Debug, PartialEq, Default)]
+pub struct Summary {
+    pub add: usize,
+    pub change: usize,
+    pub destroy: usize,
+}
+
+impl Summary {
+    #[must_use]
+    pub fn from_changes(changes: &[Change]) -> Self {
+        let mut summary = Summary::default();
+        for change in changes {
+            match change.action {
+                Action::Create => summary.add += 1,
+                Action::Delete => summary.destroy += 1,
+                Action::DeleteCreate => {
+                    summary.add += 1;
+                    summary.destroy += 1;
+                }
+                Action::Update => summary.change += 1,
+                Action::Read | Action::NoOp | Action::Unknown => {}
+            }
+        }
+        summary
+    }
+}
+
+#[derive(Serialize, Debug, PartialEq, Default)]
+pub struct Outputs {
+    pub before: ValueMap,
+    pub after: ValueMap,
+    pub actions: Vec<Action>,
+}
+
+impl Outputs {
+    /// Treats the outputs as one resource whose attributes are the changed outputs
+    #[must_use]
+    pub fn from_raw(raw: &std::collections::HashMap<String, RawOutputChange>) -> Self {
+        let mut actions = Vec::new();
+        let mut raw_before = RawValueMap::new();
+        let mut raw_after = RawValueMap::new();
+        let mut before_sensitive = std::collections::HashMap::new();
+        let mut after_sensitive = std::collections::HashMap::new();
+        let mut after_unknown = std::collections::HashMap::new();
+        for (name, change) in raw {
+            let action = Action::from_actions(&change.actions);
+            if action == Action::NoOp {
+                continue;
+            }
+            actions.push(action);
+            for (raw, map) in [
+                (&change.before, &mut raw_before),
+                (&change.after, &mut raw_after),
+            ] {
+                if let Some(value) = raw {
+                    map.insert(name.clone(), value.clone());
+                }
+            }
+            for (flag, map) in [
+                (&change.before_sensitive, &mut before_sensitive),
+                (&change.after_sensitive, &mut after_sensitive),
+                (&change.after_unknown, &mut after_unknown),
+            ] {
+                if let Some(flag) = flag {
+                    map.insert(name.clone(), flag.clone());
+                }
+            }
+        }
+        actions.sort();
+        actions.dedup();
+
+        let (before, after) = values_from_raw(
+            Some(&raw_before),
+            Some(&raw_after),
+            &BoolValue::Object(before_sensitive),
+            &BoolValue::Object(after_sensitive),
+            &BoolValue::Object(after_unknown),
+        );
+        Outputs {
+            before: before.unwrap_or_default(),
+            after: after.unwrap_or_default(),
+            actions,
+        }
+    }
+}
+
 #[derive(Serialize, Debug, PartialEq)]
 pub struct Plan {
+    title: String,
     changes: Vec<Change>,
     unique_actions: Vec<Action>,
+    summary: Summary,
+    outputs: Outputs,
     raw: RawPlan,
 }
 
@@ -382,13 +563,57 @@ impl Plan {
             }
         }
         unique_actions.sort();
+        let summary = Summary::from_changes(&changes);
+        let outputs = raw
+            .output_changes
+            .as_ref()
+            .map(Outputs::from_raw)
+            .unwrap_or_default();
 
         Plan {
+            title: String::new(),
             changes,
             unique_actions,
+            summary,
+            outputs,
             raw,
         }
     }
+}
+
+fn get_path_components(path: &str) -> Vec<String> {
+    std::path::Path::new(path)
+        .components()
+        .filter(|component| {
+            matches!(
+                component,
+                std::path::Component::Normal(_) | std::path::Component::ParentDir
+            )
+        })
+        .map(|component| component.as_os_str().to_string_lossy().into_owned())
+        .collect()
+}
+
+/// Shortens plan paths to what tells them apart: the file name when all plans share it, then the leading
+/// directories all plans share, always keeping at least one component.
+fn get_titles(paths: &[String]) -> Vec<String> {
+    let mut components: Vec<Vec<String>> =
+        paths.iter().map(|path| get_path_components(path)).collect();
+    let shortest = components.iter().map(Vec::len).min().unwrap_or(0);
+    if shortest > 1 && components.iter().map(|path| path.last()).all_equal() {
+        for path in &mut components {
+            path.pop();
+        }
+    }
+
+    let shortest = components.iter().map(Vec::len).min().unwrap_or(0);
+    let common = (0..shortest.saturating_sub(1))
+        .take_while(|index| components.iter().map(|path| &path[*index]).all_equal())
+        .count();
+    components
+        .iter()
+        .map(|path| path[common..].join("/"))
+        .collect()
 }
 
 #[derive(Serialize, Debug, PartialEq)]
@@ -397,6 +622,17 @@ pub struct Data {
 }
 
 impl Data {
+    #[must_use]
+    pub fn new(mut plans: std::collections::HashMap<String, Plan>) -> Self {
+        let paths: Vec<String> = plans.keys().cloned().collect();
+        for (path, title) in paths.iter().zip(get_titles(&paths)) {
+            if let Some(plan) = plans.get_mut(path) {
+                plan.title = title;
+            }
+        }
+        Data { plans }
+    }
+
     /// # Errors
     /// Returns an error if any of the files cannot be read or parsed
     pub fn from_files(paths: &[String]) -> Result<Self, types::Error> {
@@ -429,7 +665,7 @@ impl Data {
                 )));
             }
         }
-        Ok(Data { plans })
+        Ok(Data::new(plans))
     }
 }
 
@@ -451,6 +687,8 @@ pub mod tests {
         DeleteCreate,
         NoOp,
         NoResources,
+        Outputs,
+        Read,
         Sensitive,
         Update,
         UpdateArray,
@@ -465,6 +703,8 @@ pub mod tests {
                 PlanType::DeleteCreate,
                 PlanType::NoOp,
                 PlanType::NoResources,
+                PlanType::Outputs,
+                PlanType::Read,
                 PlanType::Sensitive,
                 PlanType::Update,
                 PlanType::UpdateArray,
@@ -493,7 +733,7 @@ pub mod tests {
             );
         }
 
-        return Data { plans };
+        return Data::new(plans);
     }
 
     pub fn get_test_plan_file(tool: &Tool, plan_type: &PlanType) -> String {
@@ -507,6 +747,8 @@ pub mod tests {
             PlanType::DeleteCreate => "delete-create",
             PlanType::NoOp => "no-op",
             PlanType::NoResources => "no-resources",
+            PlanType::Outputs => "outputs",
+            PlanType::Read => "read",
             PlanType::Sensitive => "sensitive",
             PlanType::Update => "update",
             PlanType::UpdateArray => "update-array",
@@ -1084,6 +1326,489 @@ pub mod tests {
                 expected_after.insert("not_sensitive".to_string(), Value::Unknown);
                 assert_eq!(change.after, Some(expected_after));
             }
+
+            #[test]
+            fn sensitive_whole_object() {
+                let mut inner = RawValueMap::new();
+                inner.insert("alice".to_string(), RawValue::String("admin".to_string()));
+                let mut after = RawValueMap::new();
+                after.insert("users".to_string(), RawValue::Object(inner));
+
+                let sensitive = bool_object(vec![("users", BoolValue::Boolean(true))]);
+                let change = Change::from_raw(get_raw(None, Some(after), None, Some(sensitive)));
+
+                let mut expected_after = ValueMap::new();
+                expected_after.insert("users".to_string(), Value::Sensitive);
+                assert_eq!(change.after, Some(expected_after));
+            }
+
+            #[test]
+            fn sensitive_array_insert_not_changed() {
+                let mut before = RawValueMap::new();
+                before.insert(
+                    "keys".to_string(),
+                    RawValue::Array(vec![
+                        RawValue::String("s1".to_string()),
+                        RawValue::String("s2".to_string()),
+                    ]),
+                );
+                let mut after = RawValueMap::new();
+                after.insert(
+                    "keys".to_string(),
+                    RawValue::Array(vec![
+                        RawValue::String("s0".to_string()),
+                        RawValue::String("s1".to_string()),
+                        RawValue::String("s2".to_string()),
+                    ]),
+                );
+
+                let before_sensitive = bool_object(vec![(
+                    "keys",
+                    BoolValue::Array(vec![BoolValue::Boolean(true); 2]),
+                )]);
+                let after_sensitive = bool_object(vec![(
+                    "keys",
+                    BoolValue::Array(vec![BoolValue::Boolean(true); 3]),
+                )]);
+                let change = Change::from_raw(get_raw(
+                    Some(before),
+                    Some(after),
+                    Some(before_sensitive),
+                    Some(after_sensitive),
+                ));
+
+                let mut expected_after = ValueMap::new();
+                expected_after.insert("keys".to_string(), Value::Array(vec![Value::Sensitive; 3]));
+                assert_eq!(change.after, Some(expected_after));
+            }
+
+            #[test]
+            fn sensitive_changed() {
+                let mut before = RawValueMap::new();
+                before.insert("changed".to_string(), RawValue::String("a".to_string()));
+                before.insert("same".to_string(), RawValue::String("a".to_string()));
+                before.insert(
+                    "nested".to_string(),
+                    RawValue::Array(vec![RawValue::String("a".to_string())]),
+                );
+                let mut after = before.clone();
+                after.insert("changed".to_string(), RawValue::String("b".to_string()));
+                after.insert(
+                    "nested".to_string(),
+                    RawValue::Array(vec![RawValue::String("b".to_string())]),
+                );
+
+                let sensitive = bool_object(vec![
+                    ("changed", BoolValue::Boolean(true)),
+                    ("same", BoolValue::Boolean(true)),
+                    ("nested", BoolValue::Array(vec![BoolValue::Boolean(true)])),
+                ]);
+                let change = Change::from_raw(get_raw(
+                    Some(before),
+                    Some(after),
+                    Some(sensitive.clone()),
+                    Some(sensitive),
+                ));
+
+                let mut expected_before = ValueMap::new();
+                expected_before.insert("changed".to_string(), Value::Sensitive);
+                expected_before.insert("same".to_string(), Value::Sensitive);
+                expected_before.insert("nested".to_string(), Value::Array(vec![Value::Sensitive]));
+                assert_eq!(change.before, Some(expected_before));
+
+                let mut expected_after = ValueMap::new();
+                expected_after.insert("changed".to_string(), Value::SensitiveChanged);
+                expected_after.insert("same".to_string(), Value::Sensitive);
+                expected_after.insert(
+                    "nested".to_string(),
+                    Value::Array(vec![Value::SensitiveChanged]),
+                );
+                assert_eq!(change.after, Some(expected_after));
+            }
+        }
+    }
+
+    mod summary {
+        use super::*;
+
+        fn get_change(actions: Vec<RawResourceChangeChangeAction>) -> Change {
+            Change::from_raw(RawResourceChange {
+                address: "address".to_string(),
+                name: "name".to_string(),
+                change: RawResourceChangeChange {
+                    actions,
+                    before: None,
+                    after: None,
+                    after_unknown: None,
+                    before_sensitive: None,
+                    after_sensitive: None,
+                },
+            })
+        }
+
+        #[test]
+        fn from_changes() {
+            let changes = vec![
+                get_change(vec![RawResourceChangeChangeAction::Create]),
+                get_change(vec![RawResourceChangeChangeAction::Delete]),
+                get_change(vec![
+                    RawResourceChangeChangeAction::Delete,
+                    RawResourceChangeChangeAction::Create,
+                ]),
+                get_change(vec![RawResourceChangeChangeAction::Update]),
+                get_change(vec![RawResourceChangeChangeAction::Update]),
+                get_change(vec![RawResourceChangeChangeAction::Read]),
+                get_change(vec![RawResourceChangeChangeAction::NoOp]),
+                get_change(vec![]),
+            ];
+
+            assert_eq!(
+                Summary::from_changes(&changes),
+                Summary {
+                    add: 2,
+                    change: 2,
+                    destroy: 2,
+                }
+            );
+        }
+
+        #[test]
+        fn empty() {
+            assert_eq!(Summary::from_changes(&[]), Summary::default());
+        }
+    }
+
+    mod outputs {
+        use super::*;
+
+        fn get_raw(
+            actions: Vec<RawResourceChangeChangeAction>,
+            before: Option<RawValue>,
+            after: Option<RawValue>,
+        ) -> RawOutputChange {
+            RawOutputChange {
+                actions,
+                before,
+                after,
+                after_unknown: Some(BoolValue::Boolean(false)),
+                before_sensitive: Some(BoolValue::Boolean(false)),
+                after_sensitive: Some(BoolValue::Boolean(false)),
+            }
+        }
+
+        fn from_raw(changes: Vec<(&str, RawOutputChange)>) -> Outputs {
+            let changes = changes
+                .into_iter()
+                .map(|(name, change)| (name.to_string(), change))
+                .collect();
+            Outputs::from_raw(&changes)
+        }
+
+        fn value_map(entries: Vec<(&str, Value)>) -> ValueMap {
+            entries
+                .into_iter()
+                .map(|(key, value)| (key.to_string(), value))
+                .collect()
+        }
+
+        fn string(value: &str) -> RawValue {
+            RawValue::String(value.to_string())
+        }
+
+        #[test]
+        fn create() {
+            let outputs = from_raw(vec![(
+                "name",
+                get_raw(
+                    vec![RawResourceChangeChangeAction::Create],
+                    None,
+                    Some(string("after")),
+                ),
+            )]);
+
+            assert_eq!(outputs.before, ValueMap::new());
+            assert_eq!(
+                outputs.after,
+                value_map(vec![("name", Value::String("after".to_string()))])
+            );
+            assert_eq!(outputs.actions, vec![Action::Create]);
+        }
+
+        #[test]
+        fn update() {
+            let mut object = RawValueMap::new();
+            object.insert(
+                "key".to_string(),
+                RawValue::Array(vec![RawValue::Integer(1)]),
+            );
+            let outputs = from_raw(vec![(
+                "name",
+                get_raw(
+                    vec![RawResourceChangeChangeAction::Update],
+                    Some(string("before")),
+                    Some(RawValue::Object(object)),
+                ),
+            )]);
+
+            assert_eq!(
+                outputs.before,
+                value_map(vec![("name", Value::String("before".to_string()))])
+            );
+            assert_eq!(
+                outputs.after,
+                value_map(vec![(
+                    "name",
+                    Value::Object(value_map(vec![(
+                        "key",
+                        Value::Array(vec![Value::Integer(1)])
+                    )]))
+                )])
+            );
+            assert_eq!(outputs.actions, vec![Action::Update]);
+        }
+
+        #[test]
+        fn delete() {
+            let outputs = from_raw(vec![(
+                "name",
+                get_raw(
+                    vec![RawResourceChangeChangeAction::Delete],
+                    Some(string("before")),
+                    None,
+                ),
+            )]);
+
+            assert_eq!(
+                outputs.before,
+                value_map(vec![("name", Value::String("before".to_string()))])
+            );
+            assert_eq!(outputs.after, ValueMap::new());
+            assert_eq!(outputs.actions, vec![Action::Delete]);
+        }
+
+        #[test]
+        fn no_op() {
+            let outputs = from_raw(vec![(
+                "name",
+                get_raw(
+                    vec![RawResourceChangeChangeAction::NoOp],
+                    Some(string("same")),
+                    Some(string("same")),
+                ),
+            )]);
+
+            assert_eq!(outputs, Outputs::default());
+        }
+
+        #[test]
+        fn sensitive() {
+            let mut change = get_raw(
+                vec![RawResourceChangeChangeAction::Update],
+                Some(string("before")),
+                Some(RawValue::Array(vec![string("public"), string("secret")])),
+            );
+            change.before_sensitive = Some(BoolValue::Boolean(true));
+            change.after_sensitive = Some(BoolValue::Array(vec![
+                BoolValue::Boolean(false),
+                BoolValue::Boolean(true),
+            ]));
+            let outputs = from_raw(vec![("name", change)]);
+
+            assert_eq!(outputs.before, value_map(vec![("name", Value::Sensitive)]));
+            assert_eq!(
+                outputs.after,
+                value_map(vec![(
+                    "name",
+                    Value::Array(vec![Value::String("public".to_string()), Value::Sensitive])
+                )])
+            );
+        }
+
+        #[test]
+        fn unknown() {
+            let mut change = get_raw(
+                vec![RawResourceChangeChangeAction::Update],
+                Some(string("before")),
+                None,
+            );
+            change.after_unknown = Some(BoolValue::Boolean(true));
+            let mut sensitive_change =
+                get_raw(vec![RawResourceChangeChangeAction::Create], None, None);
+            sensitive_change.after_unknown = Some(BoolValue::Boolean(true));
+            sensitive_change.after_sensitive = Some(BoolValue::Boolean(true));
+            let outputs = from_raw(vec![("name", change), ("sensitive", sensitive_change)]);
+
+            assert_eq!(
+                outputs.after,
+                value_map(vec![
+                    ("name", Value::Unknown),
+                    ("sensitive", Value::SensitiveUnknown)
+                ])
+            );
+            assert_eq!(outputs.actions, vec![Action::Create, Action::Update]);
+        }
+
+        #[test]
+        fn absent_flags() {
+            let outputs = from_raw(vec![(
+                "name",
+                RawOutputChange {
+                    actions: vec![RawResourceChangeChangeAction::Create],
+                    before: None,
+                    after: Some(string("after")),
+                    after_unknown: None,
+                    before_sensitive: None,
+                    after_sensitive: None,
+                },
+            )]);
+
+            assert_eq!(
+                outputs.after,
+                value_map(vec![("name", Value::String("after".to_string()))])
+            );
+        }
+
+        #[test]
+        fn unique_actions() {
+            let outputs = from_raw(vec![
+                (
+                    "a",
+                    get_raw(
+                        vec![RawResourceChangeChangeAction::Delete],
+                        Some(string("a")),
+                        None,
+                    ),
+                ),
+                (
+                    "b",
+                    get_raw(
+                        vec![RawResourceChangeChangeAction::Update],
+                        Some(string("b")),
+                        Some(string("c")),
+                    ),
+                ),
+                (
+                    "c",
+                    get_raw(
+                        vec![RawResourceChangeChangeAction::Delete],
+                        Some(string("c")),
+                        None,
+                    ),
+                ),
+            ]);
+
+            assert_eq!(outputs.actions, vec![Action::Update, Action::Delete]);
+        }
+
+        #[test]
+        fn plan() {
+            let plan = get_test_plan(&Tool::Terraform, &PlanType::Outputs);
+
+            assert_eq!(
+                plan.outputs.actions,
+                vec![Action::Create, Action::Update, Action::Delete]
+            );
+            assert_eq!(
+                plan.outputs.before,
+                value_map(vec![
+                    ("changed", Value::String("before".to_string())),
+                    ("removed", Value::String("removed".to_string())),
+                    ("secret", Value::Sensitive),
+                    ("unknown", Value::String("foo".to_string())),
+                ])
+            );
+            assert_eq!(
+                plan.outputs.after,
+                value_map(vec![
+                    ("added", Value::String("added".to_string())),
+                    ("changed", Value::String("after".to_string())),
+                    ("secret", Value::SensitiveChanged),
+                    ("unknown", Value::Unknown),
+                ])
+            );
+        }
+    }
+
+    mod titles {
+        use super::*;
+
+        fn titles(paths: &[&str]) -> Vec<String> {
+            let paths: Vec<String> = paths.iter().map(ToString::to_string).collect();
+            get_titles(&paths)
+        }
+
+        #[test]
+        fn same_file_name() {
+            assert_eq!(
+                titles(&[
+                    "plans/github/ovsds/plan.json",
+                    "plans/cloudflare/main/plan.json"
+                ]),
+                vec!["github/ovsds", "cloudflare/main"]
+            );
+        }
+
+        #[test]
+        fn different_file_names() {
+            assert_eq!(
+                titles(&[
+                    "tests/data/plans/create/opentofu.tfplan.json",
+                    "tests/data/plans/create/terraform.tfplan.json",
+                    "tests/data/plans/update/opentofu.tfplan.json",
+                ]),
+                vec![
+                    "create/opentofu.tfplan.json",
+                    "create/terraform.tfplan.json",
+                    "update/opentofu.tfplan.json",
+                ]
+            );
+        }
+
+        #[test]
+        fn single() {
+            assert_eq!(titles(&["plans/github/ovsds/plan.json"]), vec!["ovsds"]);
+        }
+
+        #[test]
+        fn single_file_name_only() {
+            assert_eq!(titles(&["plan.json"]), vec!["plan.json"]);
+        }
+
+        #[test]
+        fn same_directory() {
+            assert_eq!(
+                titles(&["plans/terraform.json", "plans/opentofu.json"]),
+                vec!["terraform.json", "opentofu.json"]
+            );
+        }
+
+        #[test]
+        fn nested() {
+            assert_eq!(
+                titles(&["plans/a/plan.json", "plans/a/b/plan.json"]),
+                vec!["a", "a/b"]
+            );
+        }
+
+        #[test]
+        fn root_and_current_dir() {
+            assert_eq!(
+                titles(&["/plans/a/plan.json", "./plans/b/plan.json"]),
+                vec!["a", "b"]
+            );
+        }
+
+        #[test]
+        fn empty() {
+            assert_eq!(titles(&[]), Vec::<String>::new());
+        }
+
+        #[test]
+        fn from_files() {
+            let files = vec!["tests/data/plans/*/*.tfplan.json".to_string()];
+            let data = Data::from_files(&files).unwrap();
+            let file = get_test_plan_file(&Tool::OpenTofu, &PlanType::Create);
+            assert_eq!(data.plans[&file].title, "create/opentofu.tfplan.json");
         }
     }
 
@@ -1126,6 +1851,8 @@ pub mod tests {
                 terraform_delete_create, Tool::Terraform, PlanType::DeleteCreate
                 terraform_no_op, Tool::Terraform, PlanType::NoOp
                 terraform_no_resources, Tool::Terraform, PlanType::NoResources
+                terraform_outputs, Tool::Terraform, PlanType::Outputs
+                terraform_read, Tool::Terraform, PlanType::Read
                 terraform_sensitive, Tool::Terraform, PlanType::Sensitive
                 terraform_update, Tool::Terraform, PlanType::Update
                 terraform_update_array, Tool::Terraform, PlanType::UpdateArray
@@ -1134,6 +1861,8 @@ pub mod tests {
                 opentofu_delete_create, Tool::OpenTofu, PlanType::DeleteCreate
                 opentofu_no_op, Tool::OpenTofu, PlanType::NoOp
                 opentofu_no_resources, Tool::OpenTofu, PlanType::NoResources
+                opentofu_outputs, Tool::OpenTofu, PlanType::Outputs
+                opentofu_read, Tool::OpenTofu, PlanType::Read
                 opentofu_sensitive, Tool::OpenTofu, PlanType::Sensitive
                 opentofu_update, Tool::OpenTofu, PlanType::Update
                 opentofu_update_array, Tool::OpenTofu, PlanType::UpdateArray

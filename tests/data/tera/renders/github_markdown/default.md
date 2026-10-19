@@ -1,5 +1,5 @@
 <details>
-<summary>✅tests/data/plans/create/opentofu.tfplan.json</summary>
+<summary>✅create/opentofu.tfplan.json - Plan: 1 to add, 0 to change, 0 to destroy</summary>
 <details>
 <summary>✅terraform_data.foo-bar
 </summary>
@@ -14,7 +14,7 @@ triggers_replace: null
 </details>
 </details>
 <details>
-<summary>✅tests/data/plans/create/terraform.tfplan.json</summary>
+<summary>✅create/terraform.tfplan.json - Plan: 1 to add, 0 to change, 0 to destroy</summary>
 <details>
 <summary>✅terraform_data.foo-bar
 </summary>
@@ -29,7 +29,7 @@ triggers_replace: null
 </details>
 </details>
 <details>
-<summary>♻️tests/data/plans/delete-create/opentofu.tfplan.json</summary>
+<summary>♻️delete-create/opentofu.tfplan.json - Plan: 1 to add, 0 to change, 1 to destroy</summary>
 <details>
 <summary>♻️null_resource.foo-bar
 </summary>
@@ -43,7 +43,7 @@ triggers:
 </details>
 </details>
 <details>
-<summary>♻️tests/data/plans/delete-create/terraform.tfplan.json</summary>
+<summary>♻️delete-create/terraform.tfplan.json - Plan: 1 to add, 0 to change, 1 to destroy</summary>
 <details>
 <summary>♻️null_resource.foo-bar
 </summary>
@@ -57,7 +57,7 @@ triggers:
 </details>
 </details>
 <details>
-<summary>❌tests/data/plans/delete/opentofu.tfplan.json</summary>
+<summary>❌delete/opentofu.tfplan.json - Plan: 0 to add, 0 to change, 1 to destroy</summary>
 <details>
 <summary>❌terraform_data.foo-bar
 </summary>
@@ -72,7 +72,7 @@ triggers_replace: null
 </details>
 </details>
 <details>
-<summary>❌tests/data/plans/delete/terraform.tfplan.json</summary>
+<summary>❌delete/terraform.tfplan.json - Plan: 0 to add, 0 to change, 1 to destroy</summary>
 <details>
 <summary>❌terraform_data.foo-bar
 </summary>
@@ -87,109 +87,75 @@ triggers_replace: null
 </details>
 </details>
 <details>
-<summary>🟰tests/data/plans/no-op/opentofu.tfplan.json</summary>
-<details>
-<summary>🟰terraform_data.foo-bar
-</summary>
-
-```
-
-```
-
-</details>
-</details>
-<details>
-<summary>🟰tests/data/plans/no-op/terraform.tfplan.json</summary>
-<details>
-<summary>🟰terraform_data.foo-bar
-</summary>
-
-```
-
-```
-
-</details>
-</details>
-<details>
-<summary>tests/data/plans/no-resources/opentofu.tfplan.json</summary>
+<summary>no-op/opentofu.tfplan.json - No changes</summary>
 No resource changes
 </details>
 <details>
-<summary>tests/data/plans/no-resources/terraform.tfplan.json</summary>
+<summary>no-op/terraform.tfplan.json - No changes</summary>
 No resource changes
 </details>
 <details>
-<summary>♻️tests/data/plans/sensitive/opentofu.tfplan.json</summary>
-<details>
-<summary>♻️random_bytes.test
-</summary>
-
-```
-base64: sensitive -> sensitive (known after apply)
-hex: sensitive -> sensitive (known after apply)
-length: 4 -> 8
-```
-
-</details>
+<summary>no-resources/opentofu.tfplan.json - No changes</summary>
+No resource changes
 </details>
 <details>
-<summary>♻️tests/data/plans/sensitive/terraform.tfplan.json</summary>
-<details>
-<summary>♻️random_bytes.test
-</summary>
-
-```
-base64: sensitive -> sensitive (known after apply)
-hex: sensitive -> sensitive (known after apply)
-length: 4 -> 8
-```
-
-</details>
+<summary>no-resources/terraform.tfplan.json - No changes</summary>
+No resource changes
 </details>
 <details>
-<summary>🔄tests/data/plans/update-array/opentofu.tfplan.json</summary>
+<summary>✅🔄❌outputs/opentofu.tfplan.json - Plan: 0 to add, 1 to change, 0 to destroy</summary>
 <details>
 <summary>🔄terraform_data.foo-bar
 </summary>
 
 ```
-input:
-  names:
-    - ...
-    - null -> "x"
-    - ...
-    - "c" -> null
-  ports:
-    - port: 80 -> 443
-    - ...
-output: {names: ["a", "b", "c"], ports: [{name: "http", port: 80}, {name: "ssh", port: 22}]} -> (known after apply)
+input: "foo" -> "bar"
+output: "foo" -> (known after apply)
+```
+
+</details>
+<details>
+<summary>✅🔄❌Outputs
+</summary>
+
+```
+added: null -> "added"
+changed: "before" -> "after"
+removed: "removed" -> null
+secret: sensitive -> sensitive (changed)
+unknown: "foo" -> (known after apply)
 ```
 
 </details>
 </details>
 <details>
-<summary>🔄tests/data/plans/update-array/terraform.tfplan.json</summary>
+<summary>✅🔄❌outputs/terraform.tfplan.json - Plan: 0 to add, 1 to change, 0 to destroy</summary>
 <details>
 <summary>🔄terraform_data.foo-bar
 </summary>
 
 ```
-input:
-  names:
-    - ...
-    - null -> "x"
-    - ...
-    - "c" -> null
-  ports:
-    - port: 80 -> 443
-    - ...
-output: {names: ["a", "b", "c"], ports: [{name: "http", port: 80}, {name: "ssh", port: 22}]} -> (known after apply)
+input: "foo" -> "bar"
+output: "foo" -> (known after apply)
+```
+
+</details>
+<details>
+<summary>✅🔄❌Outputs
+</summary>
+
+```
+added: null -> "added"
+changed: "before" -> "after"
+removed: "removed" -> null
+secret: sensitive -> sensitive (changed)
+unknown: "foo" -> (known after apply)
 ```
 
 </details>
 </details>
 <details>
-<summary>🔄tests/data/plans/update/opentofu.tfplan.json</summary>
+<summary>🔄read/opentofu.tfplan.json - Plan: 0 to add, 1 to change, 0 to destroy</summary>
 <details>
 <summary>🔄terraform_data.foo-bar
 </summary>
@@ -202,7 +168,103 @@ output: "foo" -> (known after apply)
 </details>
 </details>
 <details>
-<summary>🔄tests/data/plans/update/terraform.tfplan.json</summary>
+<summary>🔄read/terraform.tfplan.json - Plan: 0 to add, 1 to change, 0 to destroy</summary>
+<details>
+<summary>🔄terraform_data.foo-bar
+</summary>
+
+```
+input: "foo" -> "bar"
+output: "foo" -> (known after apply)
+```
+
+</details>
+</details>
+<details>
+<summary>♻️sensitive/opentofu.tfplan.json - Plan: 1 to add, 0 to change, 1 to destroy</summary>
+<details>
+<summary>♻️random_bytes.test
+</summary>
+
+```
+base64: sensitive -> sensitive (known after apply)
+hex: sensitive -> sensitive (known after apply)
+length: 4 -> 8
+```
+
+</details>
+</details>
+<details>
+<summary>♻️sensitive/terraform.tfplan.json - Plan: 1 to add, 0 to change, 1 to destroy</summary>
+<details>
+<summary>♻️random_bytes.test
+</summary>
+
+```
+base64: sensitive -> sensitive (known after apply)
+hex: sensitive -> sensitive (known after apply)
+length: 4 -> 8
+```
+
+</details>
+</details>
+<details>
+<summary>🔄update-array/opentofu.tfplan.json - Plan: 0 to add, 1 to change, 0 to destroy</summary>
+<details>
+<summary>🔄terraform_data.foo-bar
+</summary>
+
+```
+input:
+  names:
+    - ...
+    - null -> "x"
+    - ...
+    - "c" -> null
+  ports:
+    - port: 80 -> 443
+    - ...
+output: {names: ["a", "b", "c"], ports: [{name: "http", port: 80}, {name: "ssh", port: 22}]} -> (known after apply)
+```
+
+</details>
+</details>
+<details>
+<summary>🔄update-array/terraform.tfplan.json - Plan: 0 to add, 1 to change, 0 to destroy</summary>
+<details>
+<summary>🔄terraform_data.foo-bar
+</summary>
+
+```
+input:
+  names:
+    - ...
+    - null -> "x"
+    - ...
+    - "c" -> null
+  ports:
+    - port: 80 -> 443
+    - ...
+output: {names: ["a", "b", "c"], ports: [{name: "http", port: 80}, {name: "ssh", port: 22}]} -> (known after apply)
+```
+
+</details>
+</details>
+<details>
+<summary>🔄update/opentofu.tfplan.json - Plan: 0 to add, 1 to change, 0 to destroy</summary>
+<details>
+<summary>🔄terraform_data.foo-bar
+</summary>
+
+```
+input: "foo" -> "bar"
+output: "foo" -> (known after apply)
+```
+
+</details>
+</details>
+<details>
+<summary>🔄update/terraform.tfplan.json - Plan: 0 to add, 1 to change, 0 to destroy</summary>
 <details>
 <summary>🔄terraform_data.foo-bar
 </summary>

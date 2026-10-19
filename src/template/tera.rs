@@ -11,12 +11,16 @@ const INDENT_STR: &str = "  ";
 const MAX_ARRAY_DIFF_CELLS: usize = 4_000_000;
 
 pub const GITHUB_MARKDOWN_TEMPLATE: &str = "
-{%- for plan_key, plan in data.plans %}<details>
-<summary>{{ render_actions(actions=plan.unique_actions) }}{{ plan_key }}</summary>
-{%- if not plan.changes %}
+{%- for plan_key, plan in data.plans %}
+{%- set changes = plan.changes | filter_actions(exclude=options.hidden_actions) %}<details>
+<summary>{{ render_actions(actions=changes | map(attribute=\"action\") | concat(with=plan.outputs.actions)) }}{{ plan.title }}
+{%- if plan.summary.add == 0 and plan.summary.change == 0 and plan.summary.destroy == 0 and not changes and not plan.outputs.actions %} - No changes
+{%- else %} - Plan: {{ plan.summary.add }} to add, {{ plan.summary.change }} to change, {{ plan.summary.destroy }} to destroy
+{%- endif %}</summary>
+{%- if not changes and not plan.outputs.actions %}
 No resource changes
 {%- else %}
-{%- for change in plan.changes %}
+{%- for change in changes %}
 <details>
 <summary>{{ render_action(action=change.action) }}{{ change.address }}
 </summary>
@@ -27,6 +31,17 @@ No resource changes
 
 </details>
 {%- endfor %}
+{%- if plan.outputs.actions %}
+<details>
+<summary>{{ render_actions(actions=plan.outputs.actions) }}Outputs
+</summary>
+
+```
+{{ render_values(before=plan.outputs.before, after=plan.outputs.after, show_changed_values=options.show_changed_values) }}
+```
+
+</details>
+{%- endif %}
 {%- endif %}
 </details>
 {% endfor %}";
@@ -57,16 +72,42 @@ fn tera_render_actions(args: &Args) -> tera::Result<tera::Value> {
     let actions = args
         .get("actions")
         .ok_or("actions must be present in args")?;
-    let actions = tera::from_value::<Vec<tf::Action>>(actions.clone())?;
+    let mut actions = tera::from_value::<Vec<tf::Action>>(actions.clone())?;
+    actions.sort();
+    actions.dedup();
 
     let result: Vec<String> = actions.iter().map(render_action).collect();
 
     Ok(tera::Value::String(result.join("")))
 }
 
+fn tera_filter_actions(value: &tera::Value, args: &Args) -> tera::Result<tera::Value> {
+    let (actions, include) = match (args.get("include"), args.get("exclude")) {
+        (Some(actions), None) => (actions, true),
+        (None, Some(actions)) => (actions, false),
+        _ => return Err("exactly one of include or exclude must be present in args".into()),
+    };
+    let actions = tera::from_value::<Vec<tf::Action>>(actions.clone())?;
+    let items = tera::from_value::<Vec<tera::Value>>(value.clone())?;
+
+    let mut result: Vec<tera::Value> = Vec::new();
+    for item in items {
+        let action = item
+            .get("action")
+            .ok_or("action must be present in items")?;
+        let action = tera::from_value::<tf::Action>(action.clone())?;
+        if actions.contains(&action) == include {
+            result.push(item);
+        }
+    }
+
+    Ok(tera::Value::Array(result))
+}
+
 fn render_plaintext(value: &tf::Value) -> String {
     match value {
         tf::Value::Sensitive => "sensitive".to_string(),
+        tf::Value::SensitiveChanged => "sensitive (changed)".to_string(),
         tf::Value::SensitiveUnknown => "sensitive (known after apply)".to_string(),
         tf::Value::Unknown => "(known after apply)".to_string(),
         tf::Value::String(value) => format!("{}", tera::to_value(value).unwrap()),
@@ -450,6 +491,7 @@ fn tera_render_values(args: &Args) -> tera::Result<tera::Value> {
 pub enum RenderOptionValue {
     Bool(bool),
     String(String),
+    Actions(Vec<tf::Action>),
 }
 
 pub type RenderOptions = std::collections::HashMap<String, RenderOptionValue>;
@@ -465,6 +507,7 @@ pub fn render(
     tera.register_function("render_values", tera_render_values);
     tera.register_function("render_action", tera_render_action);
     tera.register_function("render_actions", tera_render_actions);
+    tera.register_filter("filter_actions", tera_filter_actions);
 
     let template_name = "template";
     match tera.add_raw_template(template_name, template) {
@@ -578,7 +621,18 @@ mod tests {
                 tf::Action::Read,
                 tf::Action::Unknown,
             ];
-            assert_eq!(test(actions).unwrap(), "✅❌♻\u{fe0f}🔄🟰🔍❓");
+            assert_eq!(test(actions).unwrap(), "✅♻\u{fe0f}🔍🔄❌🟰❓");
+        }
+
+        #[test]
+        fn duplicates() {
+            let actions = vec![
+                tf::Action::Update,
+                tf::Action::Create,
+                tf::Action::Update,
+                tf::Action::Create,
+            ];
+            assert_eq!(test(actions).unwrap(), "✅🔄");
         }
 
         #[test]
@@ -605,6 +659,105 @@ mod tests {
             context.insert("actions", &actions);
 
             test_with_context(context).unwrap_err();
+        }
+    }
+
+    mod filter_actions {
+        use super::*;
+
+        fn test(template: &str) -> tera::Result<String> {
+            test_with_changes(
+                template,
+                vec![
+                    serde_json::json!({"address": "create", "action": "Create"}),
+                    serde_json::json!({"address": "no_op", "action": "NoOp"}),
+                    serde_json::json!({"address": "read", "action": "Read"}),
+                    serde_json::json!({"address": "update", "action": "Update"}),
+                ],
+            )
+        }
+
+        fn test_with_changes(template: &str, changes: Vec<tera::Value>) -> tera::Result<String> {
+            let mut tera = tera::Tera::default();
+            tera.register_filter("filter_actions", tera_filter_actions);
+            tera.add_raw_template("template", template).unwrap();
+
+            let mut context = tera::Context::new();
+            context.insert("changes", &changes);
+            context.insert("actions", &vec![tf::Action::NoOp, tf::Action::Read]);
+            tera.render("template", &context)
+        }
+
+        #[test]
+        fn include() {
+            let result = test(
+                "{% for change in changes | filter_actions(include=actions) %}{{ change.address }} {% endfor %}",
+            );
+            assert_eq!(result.unwrap(), "no_op read ");
+        }
+
+        #[test]
+        fn exclude() {
+            let result = test(
+                "{% for change in changes | filter_actions(exclude=actions) %}{{ change.address }} {% endfor %}",
+            );
+            assert_eq!(result.unwrap(), "create update ");
+        }
+
+        #[test]
+        fn exclude_none() {
+            let result = test(
+                "{% for change in changes | filter_actions(exclude=[]) %}{{ change.address }} {% endfor %}",
+            );
+            assert_eq!(result.unwrap(), "create no_op read update ");
+        }
+
+        fn assert_args_error(result: tera::Result<String>) {
+            let error = result.unwrap_err();
+            let mut source: &dyn std::error::Error = &error;
+            while let Some(next) = source.source() {
+                source = next;
+            }
+            assert_eq!(
+                source.to_string(),
+                "exactly one of include or exclude must be present in args"
+            );
+        }
+
+        #[test]
+        fn both() {
+            assert_args_error(test(
+                "{{ changes | filter_actions(include=actions, exclude=actions) }}",
+            ));
+        }
+
+        #[test]
+        fn neither() {
+            assert_args_error(test("{{ changes | filter_actions() }}"));
+        }
+
+        #[test]
+        fn invalid_actions() {
+            test("{{ changes | filter_actions(include=[\"invalid\"]) }}").unwrap_err();
+        }
+
+        #[test]
+        fn invalid_value() {
+            test("{{ \"invalid\" | filter_actions(include=actions) }}").unwrap_err();
+        }
+
+        #[test]
+        fn no_action() {
+            let changes = vec![serde_json::json!({"address": "no_action"})];
+            test_with_changes("{{ changes | filter_actions(include=actions) }}", changes)
+                .unwrap_err();
+        }
+
+        #[test]
+        fn invalid_item_action() {
+            let changes = vec![serde_json::json!({"action": "invalid"})];
+            test_with_changes("{{ changes | filter_actions(include=actions) }}", changes)
+                .unwrap_err();
         }
     }
 
@@ -1097,6 +1250,10 @@ string: "abc" -> (known after apply)"#;
             options.insert(
                 "show_changed_values".to_string(),
                 RenderOptionValue::Bool(false),
+            );
+            options.insert(
+                "hidden_actions".to_string(),
+                RenderOptionValue::Actions(vec![tf::Action::NoOp, tf::Action::Read]),
             );
             let result = render(&data, GITHUB_MARKDOWN_TEMPLATE, Some(options)).unwrap();
 

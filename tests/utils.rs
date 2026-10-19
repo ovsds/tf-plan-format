@@ -23,6 +23,8 @@ pub fn get_plan_files() -> Vec<std::string::String> {
             "delete-create",
             "no-op",
             "no-resources",
+            "outputs",
+            "read",
             "sensitive",
             "update",
             "update-array",
