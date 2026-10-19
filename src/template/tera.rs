@@ -14,7 +14,7 @@ pub const GITHUB_MARKDOWN_TEMPLATE: &str = "
 {%- for plan_key, plan in data.plans %}
 {%- set changes = plan.changes | filter_actions(exclude=options.hidden_actions) %}<details>
 <summary>{{ render_actions(actions=changes | map(attribute=\"action\") | concat(with=plan.outputs.actions)) }}{{ plan.title }}
-{%- if plan.summary.add == 0 and plan.summary.change == 0 and plan.summary.destroy == 0 and not plan.outputs.actions %} - No changes
+{%- if plan.summary.add == 0 and plan.summary.change == 0 and plan.summary.destroy == 0 and not changes and not plan.outputs.actions %} - No changes
 {%- else %} - Plan: {{ plan.summary.add }} to add, {{ plan.summary.change }} to change, {{ plan.summary.destroy }} to destroy
 {%- endif %}</summary>
 {%- if not changes and not plan.outputs.actions %}

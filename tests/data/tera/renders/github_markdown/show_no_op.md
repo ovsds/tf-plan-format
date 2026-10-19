@@ -87,7 +87,7 @@ triggers_replace: null
 </details>
 </details>
 <details>
-<summary>🟰no-op/opentofu.tfplan.json - No changes</summary>
+<summary>🟰no-op/opentofu.tfplan.json - Plan: 0 to add, 0 to change, 0 to destroy</summary>
 <details>
 <summary>🟰terraform_data.foo-bar
 </summary>
@@ -99,7 +99,7 @@ triggers_replace: null
 </details>
 </details>
 <details>
-<summary>🟰no-op/terraform.tfplan.json - No changes</summary>
+<summary>🟰no-op/terraform.tfplan.json - Plan: 0 to add, 0 to change, 0 to destroy</summary>
 <details>
 <summary>🟰terraform_data.foo-bar
 </summary>
