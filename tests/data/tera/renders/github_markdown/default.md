@@ -103,7 +103,7 @@ No resource changes
 No resource changes
 </details>
 <details>
-<summary>🔄outputs/opentofu.tfplan.json - Plan: 0 to add, 1 to change, 0 to destroy</summary>
+<summary>✅🔄❌outputs/opentofu.tfplan.json - Plan: 0 to add, 1 to change, 0 to destroy</summary>
 <details>
 <summary>🔄terraform_data.foo-bar
 </summary>
@@ -129,7 +129,7 @@ unknown: "foo" -> (known after apply)
 </details>
 </details>
 <details>
-<summary>🔄outputs/terraform.tfplan.json - Plan: 0 to add, 1 to change, 0 to destroy</summary>
+<summary>✅🔄❌outputs/terraform.tfplan.json - Plan: 0 to add, 1 to change, 0 to destroy</summary>
 <details>
 <summary>🔄terraform_data.foo-bar
 </summary>

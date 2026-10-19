@@ -245,7 +245,10 @@ fn is_flagged(flag: &BoolValue) -> bool {
 
 fn mask_sensitive(value: Value, sensitive: &BoolValue) -> Value {
     match (value.clone(), sensitive) {
-        (Value::Object(value_map), _) => Value::Object(mask_sensitive_map(value_map, sensitive)),
+        // A whole value flagged sensitive is masked whole: masking key by key would show the keys
+        (Value::Object(value_map), _) if !is_flagged(sensitive) => {
+            Value::Object(mask_sensitive_map(value_map, sensitive))
+        }
         (Value::Array(value_array), BoolValue::Array(sensitive_array)) => {
             Value::Array(mask_sensitive_array(value_array, sensitive_array))
         }
@@ -351,12 +354,13 @@ fn mark_sensitive_changes(
         ) => Value::Object(mark_sensitive_changes_map(
             before, after, raw_before, raw_after,
         )),
+        // Elements pair by index only while no insertion or removal shifted them
         (
             Value::Array(before),
             Value::Array(after),
             RawValue::Array(raw_before),
             RawValue::Array(raw_after),
-        ) => Value::Array(
+        ) if raw_before.len() == raw_after.len() => Value::Array(
             after
                 .into_iter()
                 .enumerate()
@@ -1317,6 +1321,61 @@ pub mod tests {
                 expected_after.insert("present".to_string(), Value::SensitiveUnknown);
                 expected_after.insert("absent".to_string(), Value::SensitiveUnknown);
                 expected_after.insert("not_sensitive".to_string(), Value::Unknown);
+                assert_eq!(change.after, Some(expected_after));
+            }
+
+            #[test]
+            fn sensitive_whole_object() {
+                let mut inner = RawValueMap::new();
+                inner.insert("alice".to_string(), RawValue::String("admin".to_string()));
+                let mut after = RawValueMap::new();
+                after.insert("users".to_string(), RawValue::Object(inner));
+
+                let sensitive = bool_object(vec![("users", BoolValue::Boolean(true))]);
+                let change = Change::from_raw(get_raw(None, Some(after), None, Some(sensitive)));
+
+                let mut expected_after = ValueMap::new();
+                expected_after.insert("users".to_string(), Value::Sensitive);
+                assert_eq!(change.after, Some(expected_after));
+            }
+
+            #[test]
+            fn sensitive_array_insert_not_changed() {
+                let mut before = RawValueMap::new();
+                before.insert(
+                    "keys".to_string(),
+                    RawValue::Array(vec![
+                        RawValue::String("s1".to_string()),
+                        RawValue::String("s2".to_string()),
+                    ]),
+                );
+                let mut after = RawValueMap::new();
+                after.insert(
+                    "keys".to_string(),
+                    RawValue::Array(vec![
+                        RawValue::String("s0".to_string()),
+                        RawValue::String("s1".to_string()),
+                        RawValue::String("s2".to_string()),
+                    ]),
+                );
+
+                let before_sensitive = bool_object(vec![(
+                    "keys",
+                    BoolValue::Array(vec![BoolValue::Boolean(true); 2]),
+                )]);
+                let after_sensitive = bool_object(vec![(
+                    "keys",
+                    BoolValue::Array(vec![BoolValue::Boolean(true); 3]),
+                )]);
+                let change = Change::from_raw(get_raw(
+                    Some(before),
+                    Some(after),
+                    Some(before_sensitive),
+                    Some(after_sensitive),
+                ));
+
+                let mut expected_after = ValueMap::new();
+                expected_after.insert("keys".to_string(), Value::Array(vec![Value::Sensitive; 3]));
                 assert_eq!(change.after, Some(expected_after));
             }
 
