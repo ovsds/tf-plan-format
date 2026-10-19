@@ -382,11 +382,11 @@ mod tests {
             assert!(!kept.contains(COLLAPSED));
             assert_eq!(1, result.matches(COLLAPSED).count());
             assert_eq!(
-                "_Output limited to 5659 bytes: values of 1 change not shown_",
+                "_Output limited to 5683 bytes: values of 1 change not shown_",
                 get_note(&result)
             );
             assert!(result.ends_with(
-                "</details>\n\n_Output limited to 5659 bytes: values of 1 change not shown_\n"
+                "</details>\n\n_Output limited to 5683 bytes: values of 1 change not shown_\n"
             ));
         }
 
@@ -421,7 +421,7 @@ mod tests {
             assert!(result.contains("no-resources/terraform.tfplan.json - "));
             assert!(!result.contains("outputs/opentofu.tfplan.json - "));
             assert_eq!(
-                "_Output limited to 2000 bytes: the last 10 plans and values of 4 changes not shown_",
+                "_Output limited to 2000 bytes: the last 10 plans and values of 5 changes not shown_",
                 get_note(&result)
             );
         }
@@ -513,6 +513,10 @@ mod tests {
                             .unwrap();
 
                     assert!(result.len() <= max_length, "{max_length}: {result}");
+                    assert!(
+                        result.starts_with("<!-- tf-plan-format -->\n"),
+                        "{max_length}: {result}"
+                    );
                     assert_eq!(
                         result.matches("<details>").count(),
                         result.matches("</details>").count(),
@@ -528,13 +532,13 @@ mod tests {
         }
 
         #[test]
-        fn tiny_cap_keeps_only_note() {
+        fn tiny_cap_keeps_only_marker_and_note() {
             let data = tf::tests::get_test_data();
             let result = render_capped(&data, 10);
 
-            // Even the note alone exceeds the cap, it is still the best output left
+            // Even the marker and the note exceed the cap, they are still the best output left
             assert_eq!(
-                "_Output limited to 10 bytes: all 20 plans not shown_\n",
+                "<!-- tf-plan-format -->\n_Output limited to 10 bytes: all 20 plans not shown_\n",
                 result
             );
         }

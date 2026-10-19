@@ -1,7 +1,7 @@
 [package]
 name = "tf_plan_format"
 description = "Converts Terraform plan JSON to templated output"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2021"
 license-file = "LICENSE"
 repository = "https://github.com/ovsds/tf-plan-format"
