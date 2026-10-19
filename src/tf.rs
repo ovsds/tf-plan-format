@@ -540,10 +540,10 @@ impl Outputs {
 #[derive(Serialize, Debug, PartialEq)]
 pub struct Plan {
     title: String,
-    changes: Vec<Change>,
+    pub changes: Vec<Change>,
     unique_actions: Vec<Action>,
     summary: Summary,
-    outputs: Outputs,
+    pub outputs: Outputs,
     raw: RawPlan,
 }
 
