@@ -8,6 +8,7 @@ use core::str;
 use std::collections::HashSet;
 
 const INDENT_STR: &str = "  ";
+const MAX_ARRAY_DIFF_CELLS: usize = 4_000_000;
 
 pub const GITHUB_MARKDOWN_TEMPLATE: &str = "
 {%- for plan_key, plan in data.plans %}<details>
@@ -221,6 +222,19 @@ fn diff_arrays<'a>(before: &'a [tf::Value], after: &'a [tf::Value]) -> Vec<Array
 /// Pairs elements by their longest common subsequence, so an insertion or removal does not shift every later element
 /// into a change; removed and added elements between two common ones are paired up in order, the rest diff with null.
 fn diff_arrays_middle<'a>(before: &'a [tf::Value], after: &'a [tf::Value]) -> Vec<ArrayChange<'a>> {
+    // The table is quadratic: past the cap, elements pair by position
+    if before.len().saturating_mul(after.len()) > MAX_ARRAY_DIFF_CELLS {
+        return (0..before.len().max(after.len()))
+            .map(|index| match (before.get(index), after.get(index)) {
+                (Some(before), Some(after)) if before == after => ArrayChange::Same(before),
+                (before, after) => ArrayChange::Changed(
+                    before.unwrap_or(&tf::Value::Null),
+                    after.unwrap_or(&tf::Value::Null),
+                ),
+            })
+            .collect();
+    }
+
     let mut common = vec![vec![0usize; after.len() + 1]; before.len() + 1];
     for i in (0..before.len()).rev() {
         for j in (0..after.len()).rev() {
@@ -996,6 +1010,22 @@ string: "abc" -> (known after apply)"#;
             let expected = r#"array:
   - ...
   - null -> -1"#;
+            pretty_assertions::assert_eq!(result, expected);
+        }
+
+        #[test]
+        fn array_large_both_ends_changed() {
+            let before: Vec<tf::Value> = (0..3_000).map(tf::Value::Integer).collect();
+            let mut after = before.clone();
+            after[0] = tf::Value::Integer(-1);
+            after[2_999] = tf::Value::Integer(-2);
+
+            let result = test_array(before, after, false);
+
+            let expected = r#"array:
+  - 0 -> -1
+  - ...
+  - 2999 -> -2"#;
             pretty_assertions::assert_eq!(result, expected);
         }
 
