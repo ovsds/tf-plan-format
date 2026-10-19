@@ -155,6 +155,56 @@ length: 4 -> 8
 </details>
 </details>
 <details>
+<summary>🔄tests/data/plans/update-array/opentofu.tfplan.json</summary>
+<details>
+<summary>🔄terraform_data.foo-bar
+</summary>
+
+```
+id: "6644bda8-d272-93dc-c92d-07c84994e980"
+input:
+  names:
+    - "a"
+    - null -> "x"
+    - "b"
+    - "c" -> null
+  ports:
+    - name: "http"
+      port: 80 -> 443
+    - name: "ssh"
+      port: 22
+output: {names: ["a", "b", "c"], ports: [{name: "http", port: 80}, {name: "ssh", port: 22}]} -> (known after apply)
+triggers_replace: null
+```
+
+</details>
+</details>
+<details>
+<summary>🔄tests/data/plans/update-array/terraform.tfplan.json</summary>
+<details>
+<summary>🔄terraform_data.foo-bar
+</summary>
+
+```
+id: "45e28af4-dcf3-e0d7-5b03-236af59f991b"
+input:
+  names:
+    - "a"
+    - null -> "x"
+    - "b"
+    - "c" -> null
+  ports:
+    - name: "http"
+      port: 80 -> 443
+    - name: "ssh"
+      port: 22
+output: {names: ["a", "b", "c"], ports: [{name: "http", port: 80}, {name: "ssh", port: 22}]} -> (known after apply)
+triggers_replace: null
+```
+
+</details>
+</details>
+<details>
 <summary>🔄tests/data/plans/update/opentofu.tfplan.json</summary>
 <details>
 <summary>🔄terraform_data.foo-bar

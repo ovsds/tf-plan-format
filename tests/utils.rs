@@ -25,6 +25,7 @@ pub fn get_plan_files() -> Vec<std::string::String> {
             "no-resources",
             "sensitive",
             "update",
+            "update-array",
         ] {
             files.push(get_test_data_file_path(&format!(
                 "plans/{plan}/{tool}.tfplan.json"

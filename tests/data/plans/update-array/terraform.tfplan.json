@@ -1,0 +1,222 @@
+{
+  "format_version": "1.2",
+  "terraform_version": "1.7.5",
+  "planned_values": {
+    "root_module": {
+      "resources": [
+        {
+          "address": "terraform_data.foo-bar",
+          "mode": "managed",
+          "type": "terraform_data",
+          "name": "foo-bar",
+          "provider_name": "terraform.io/builtin/terraform",
+          "schema_version": 0,
+          "values": {
+            "id": "45e28af4-dcf3-e0d7-5b03-236af59f991b",
+            "input": {
+              "names": ["a", "x", "b"],
+              "ports": [
+                {
+                  "name": "http",
+                  "port": 443
+                },
+                {
+                  "name": "ssh",
+                  "port": 22
+                }
+              ]
+            },
+            "triggers_replace": null
+          },
+          "sensitive_values": {
+            "input": {
+              "names": [false, false, false],
+              "ports": [{}, {}]
+            },
+            "output": {}
+          }
+        }
+      ]
+    }
+  },
+  "resource_changes": [
+    {
+      "address": "terraform_data.foo-bar",
+      "mode": "managed",
+      "type": "terraform_data",
+      "name": "foo-bar",
+      "provider_name": "terraform.io/builtin/terraform",
+      "change": {
+        "actions": ["update"],
+        "before": {
+          "id": "45e28af4-dcf3-e0d7-5b03-236af59f991b",
+          "input": {
+            "names": ["a", "b", "c"],
+            "ports": [
+              {
+                "name": "http",
+                "port": 80
+              },
+              {
+                "name": "ssh",
+                "port": 22
+              }
+            ]
+          },
+          "output": {
+            "names": ["a", "b", "c"],
+            "ports": [
+              {
+                "name": "http",
+                "port": 80
+              },
+              {
+                "name": "ssh",
+                "port": 22
+              }
+            ]
+          },
+          "triggers_replace": null
+        },
+        "after": {
+          "id": "45e28af4-dcf3-e0d7-5b03-236af59f991b",
+          "input": {
+            "names": ["a", "x", "b"],
+            "ports": [
+              {
+                "name": "http",
+                "port": 443
+              },
+              {
+                "name": "ssh",
+                "port": 22
+              }
+            ]
+          },
+          "triggers_replace": null
+        },
+        "after_unknown": {
+          "input": {
+            "names": [false, false, false],
+            "ports": [{}, {}]
+          },
+          "output": true
+        },
+        "before_sensitive": {
+          "input": {
+            "names": [false, false, false],
+            "ports": [{}, {}]
+          },
+          "output": {
+            "names": [false, false, false],
+            "ports": [{}, {}]
+          }
+        },
+        "after_sensitive": {
+          "input": {
+            "names": [false, false, false],
+            "ports": [{}, {}]
+          },
+          "output": {}
+        }
+      }
+    }
+  ],
+  "prior_state": {
+    "format_version": "1.0",
+    "terraform_version": "1.7.5",
+    "values": {
+      "root_module": {
+        "resources": [
+          {
+            "address": "terraform_data.foo-bar",
+            "mode": "managed",
+            "type": "terraform_data",
+            "name": "foo-bar",
+            "provider_name": "terraform.io/builtin/terraform",
+            "schema_version": 0,
+            "values": {
+              "id": "45e28af4-dcf3-e0d7-5b03-236af59f991b",
+              "input": {
+                "names": ["a", "b", "c"],
+                "ports": [
+                  {
+                    "name": "http",
+                    "port": 80
+                  },
+                  {
+                    "name": "ssh",
+                    "port": 22
+                  }
+                ]
+              },
+              "output": {
+                "names": ["a", "b", "c"],
+                "ports": [
+                  {
+                    "name": "http",
+                    "port": 80
+                  },
+                  {
+                    "name": "ssh",
+                    "port": 22
+                  }
+                ]
+              },
+              "triggers_replace": null
+            },
+            "sensitive_values": {
+              "input": {
+                "names": [false, false, false],
+                "ports": [{}, {}]
+              },
+              "output": {
+                "names": [false, false, false],
+                "ports": [{}, {}]
+              }
+            }
+          }
+        ]
+      }
+    }
+  },
+  "configuration": {
+    "provider_config": {
+      "terraform": {
+        "name": "terraform",
+        "full_name": "terraform.io/builtin/terraform"
+      }
+    },
+    "root_module": {
+      "resources": [
+        {
+          "address": "terraform_data.foo-bar",
+          "mode": "managed",
+          "type": "terraform_data",
+          "name": "foo-bar",
+          "provider_config_key": "terraform",
+          "expressions": {
+            "input": {
+              "constant_value": {
+                "names": ["a", "x", "b"],
+                "ports": [
+                  {
+                    "name": "http",
+                    "port": 443
+                  },
+                  {
+                    "name": "ssh",
+                    "port": 22
+                  }
+                ]
+              }
+            }
+          },
+          "schema_version": 0
+        }
+      ]
+    }
+  },
+  "timestamp": "2026-10-19T06:03:06Z",
+  "errored": false
+}
