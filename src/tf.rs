@@ -618,12 +618,12 @@ fn get_titles(paths: &[String]) -> Vec<String> {
 
 #[derive(Serialize, Debug, PartialEq)]
 pub struct Data {
-    pub plans: std::collections::HashMap<String, Plan>,
+    pub plans: std::collections::BTreeMap<String, Plan>,
 }
 
 impl Data {
     #[must_use]
-    pub fn new(mut plans: std::collections::HashMap<String, Plan>) -> Self {
+    pub fn new(mut plans: std::collections::BTreeMap<String, Plan>) -> Self {
         let paths: Vec<String> = plans.keys().cloned().collect();
         for (path, title) in paths.iter().zip(get_titles(&paths)) {
             if let Some(plan) = plans.get_mut(path) {
@@ -636,7 +636,7 @@ impl Data {
     /// # Errors
     /// Returns an error if any of the files cannot be read or parsed
     pub fn from_files(paths: &[String]) -> Result<Self, types::Error> {
-        let mut plans: std::collections::HashMap<String, Plan> = std::collections::HashMap::new();
+        let mut plans = std::collections::BTreeMap::new();
         for path_glob in paths {
             let glob = glob::glob(path_glob).map_err(|e| {
                 types::Error::chain(format!("Failed to read file({path_glob}), invalid glob"), e)
@@ -724,7 +724,7 @@ pub mod tests {
     }
 
     pub fn get_test_data() -> Data {
-        let mut plans: std::collections::HashMap<String, Plan> = std::collections::HashMap::new();
+        let mut plans = std::collections::BTreeMap::new();
 
         for (tool, plan_type) in get_test_data_plans() {
             plans.insert(

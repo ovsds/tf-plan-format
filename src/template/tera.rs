@@ -10,13 +10,23 @@ use std::collections::HashSet;
 const INDENT_STR: &str = "  ";
 const MAX_ARRAY_DIFF_CELLS: usize = 4_000_000;
 
-pub const GITHUB_MARKDOWN_TEMPLATE: &str = "
-{%- set rendered_plans = options.plans | default(value=data.plans) %}
+macro_rules! collapsed_values {
+    () => {
+        "_Values not shown to fit the length limit_"
+    };
+}
+
+/// What the github template renders in place of a collapsed values block
+pub const COLLAPSED_VALUES: &str = collapsed_values!();
+
+pub const GITHUB_MARKDOWN_TEMPLATE: &str = concat!("
+{%- set plan_count = options.plan_count | default(value=data.plans | length) %}
 {%- set collapsed_outputs = options.collapsed_outputs | default(value=[]) %}
 {%- for plan_key, plan in data.plans %}
-{%- if plan_key in rendered_plans %}
+{%- set plan_index = loop.index0 %}
+{%- if plan_index < plan_count %}
 {%- set changes = plan.changes | filter_actions(exclude=options.hidden_actions) %}
-{%- set collapsed_changes = options.collapsed_changes[plan_key] | default(value=[]) %}<details>
+{%- set collapsed_changes = options.collapsed_changes[plan_index] | default(value=[]) %}<details>
 <summary>{{ render_actions(actions=changes | map(attribute=\"action\") | concat(with=plan.outputs.actions)) }}{{ plan.title }}
 {%- if plan.summary.add == 0 and plan.summary.change == 0 and plan.summary.destroy == 0 and not changes and not plan.outputs.actions %} - No changes
 {%- else %} - Plan: {{ plan.summary.add }} to add, {{ plan.summary.change }} to change, {{ plan.summary.destroy }} to destroy
@@ -29,7 +39,7 @@ No resource changes
 <summary>{{ render_action(action=change.action) }}{{ change.address }}
 </summary>
 
-{% if loop.index0 in collapsed_changes %}_Values not shown to fit the length limit_{% else %}```
+{% if loop.index0 in collapsed_changes %}", collapsed_values!(), "{% else %}```
 {{ render_values(before=change.before, after=change.after, show_changed_values=options.show_changed_values) }}
 ```{% endif %}
 
@@ -40,7 +50,7 @@ No resource changes
 <summary>{{ render_actions(actions=plan.outputs.actions) }}Outputs
 </summary>
 
-{% if plan_key in collapsed_outputs %}_Values not shown to fit the length limit_{% else %}```
+{% if plan_index in collapsed_outputs %}", collapsed_values!(), "{% else %}```
 {{ render_values(before=plan.outputs.before, after=plan.outputs.after, show_changed_values=options.show_changed_values) }}
 ```{% endif %}
 
@@ -50,9 +60,9 @@ No resource changes
 </details>
 {% endif %}
 {%- endfor %}
-{%- if options.note is defined %}{% if rendered_plans %}
+{%- if options.note is defined %}{% if plan_count > 0 %}
 {% endif %}_{{ options.note }}_
-{% endif %}";
+{% endif %}");
 const DEFAULT_SHOW_CHANGED_VALUES: bool = true;
 
 type Args = std::collections::HashMap<String, tera::Value>;
@@ -104,12 +114,18 @@ fn tera_filter_actions(value: &tera::Value, args: &Args) -> tera::Result<tera::V
             .get("action")
             .ok_or("action must be present in items")?;
         let action = tera::from_value::<tf::Action>(action.clone())?;
-        if actions.contains(&action) == include {
+        if keeps_action(&action, &actions, include) {
             result.push(item);
         }
     }
 
     Ok(tera::Value::Array(result))
+}
+
+/// The `filter_actions` rule, shared so code can find the items the template renders
+#[must_use]
+pub fn keeps_action(action: &tf::Action, actions: &[tf::Action], include: bool) -> bool {
+    actions.contains(action) == include
 }
 
 fn render_plaintext(value: &tf::Value) -> String {
@@ -507,8 +523,9 @@ pub enum RenderOptionValue {
     Bool(bool),
     String(String),
     Actions(Vec<tf::Action>),
-    Strings(Vec<String>),
-    Indices(std::collections::HashMap<String, Vec<usize>>),
+    Count(usize),
+    Indices(Vec<usize>),
+    IndexLists(Vec<Vec<usize>>),
 }
 
 pub type RenderOptions = std::collections::HashMap<String, RenderOptionValue>;

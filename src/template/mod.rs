@@ -1,7 +1,5 @@
 use crate::tf;
 use crate::types;
-use itertools::Itertools;
-use std::collections::HashMap;
 use std::str::FromStr;
 
 pub mod tera;
@@ -69,35 +67,47 @@ pub fn render_github(
         return Ok(result);
     };
 
-    let mut limits = Limits {
-        max_length,
-        plans: get_plan_keys(data),
-        ..Limits::default()
-    };
-    let mut blocks =
-        get_values_blocks(data, &limits.plans, &hidden_actions, show_changed_values).into_iter();
+    let mut limits = Limits::new(max_length, data.plans.len());
+    let mut blocks = get_values_blocks(data, &hidden_actions, show_changed_values).into_iter();
     while result.len() > max_length && blocks.len() > 0 {
-        // Values length alone estimates the saving, the re-render accounts for the markup and the note
+        // The savings estimate the re-render, which also accounts for the note
         let excess = result.len() - max_length;
         let mut saving = 0;
         for block in blocks.by_ref() {
-            saving += block.length;
-            limits.collapse(block);
+            saving += block.saving;
+            limits.collapse(&block);
             if saving >= excess {
                 break;
             }
         }
         result = render(Some(&limits))?;
     }
-    while result.len() > max_length && limits.drop_last_plan() {
+    if result.len() > max_length {
+        limits.plan_count = get_fitting_plan_count(limits.plan_count, |plan_count| {
+            limits.plan_count = plan_count;
+            Ok(render(Some(&limits))?.len() <= max_length)
+        })?;
         result = render(Some(&limits))?;
     }
     Ok(result)
 }
 
-/// The order Tera iterates plans in: `serde_json` maps are sorted by key
-fn get_plan_keys(data: &tf::Data) -> Vec<String> {
-    data.plans.keys().sorted().cloned().collect()
+/// The most plans that fit when the last ones are dropped, knowing that all of them do not; none if even one
+/// plan does not fit
+fn get_fitting_plan_count(
+    plan_count: usize,
+    mut fits: impl FnMut(usize) -> Result<bool, types::Error>,
+) -> Result<usize, types::Error> {
+    let (mut low, mut high) = (0, plan_count.saturating_sub(1));
+    while low < high {
+        let middle = low + (high - low).div_ceil(2);
+        if fits(middle)? {
+            low = middle;
+        } else {
+            high = middle - 1;
+        }
+    }
+    Ok(low)
 }
 
 enum ValuesBlockKind {
@@ -106,25 +116,24 @@ enum ValuesBlockKind {
 }
 
 struct ValuesBlock {
-    plan: String,
+    plan: usize,
     kind: ValuesBlockKind,
-    length: usize,
+    saving: usize,
 }
 
-/// Values blocks the github template renders, largest first, ties in render order
+/// Values blocks the github template renders that collapsing shortens, largest saving first, ties in render
+/// order
 fn get_values_blocks(
     data: &tf::Data,
-    plans: &[String],
     hidden_actions: &[tf::Action],
     show_changed_values: bool,
 ) -> Vec<ValuesBlock> {
     let mut blocks = Vec::new();
-    for plan_key in plans {
-        let plan = &data.plans[plan_key];
+    for (plan_index, plan) in data.plans.values().enumerate() {
         let changes = plan
             .changes
             .iter()
-            .filter(|change| !hidden_actions.contains(&change.action))
+            .filter(|change| tera::keeps_action(&change.action, hidden_actions, false))
             .enumerate()
             .map(|(index, change)| {
                 let kind = ValuesBlockKind::Change(index);
@@ -138,70 +147,73 @@ fn get_values_blocks(
                 Some(&outputs.after),
             )
         });
-        blocks.extend(
-            changes
-                .chain(outputs)
-                .map(|(kind, before, after)| ValuesBlock {
-                    plan: plan_key.clone(),
-                    kind,
-                    length: tera::render_values(before, after, show_changed_values).len(),
-                }),
-        );
+        blocks.extend(changes.chain(outputs).filter_map(|(kind, before, after)| {
+            let values = tera::render_values(before, after, show_changed_values);
+            let saving = (values.len() + "```\n\n```".len())
+                .checked_sub(tera::COLLAPSED_VALUES.len())
+                .filter(|&saving| saving > 0)?;
+            Some(ValuesBlock {
+                plan: plan_index,
+                kind,
+                saving,
+            })
+        }));
     }
-    blocks.sort_by_key(|block| std::cmp::Reverse(block.length));
+    blocks.sort_by_key(|block| std::cmp::Reverse(block.saving));
     blocks
 }
 
-#[derive(Default)]
+/// Plans are identified by their position in render order, dropping only ever removes the last ones
 struct Limits {
     max_length: usize,
-    plans: Vec<String>,
-    dropped_plans: usize,
-    collapsed_changes: HashMap<String, Vec<usize>>,
-    collapsed_outputs: Vec<String>,
+    plan_count: usize,
+    collapsed_changes: Vec<Vec<usize>>,
+    collapsed_outputs: Vec<usize>,
 }
 
 impl Limits {
-    fn collapse(&mut self, block: ValuesBlock) {
+    fn new(max_length: usize, plan_count: usize) -> Self {
+        Limits {
+            max_length,
+            plan_count,
+            collapsed_changes: vec![Vec::new(); plan_count],
+            collapsed_outputs: Vec::new(),
+        }
+    }
+
+    fn collapse(&mut self, block: &ValuesBlock) {
         match block.kind {
-            ValuesBlockKind::Change(index) => self
-                .collapsed_changes
-                .entry(block.plan)
-                .or_default()
-                .push(index),
+            ValuesBlockKind::Change(index) => self.collapsed_changes[block.plan].push(index),
             ValuesBlockKind::Outputs => self.collapsed_outputs.push(block.plan),
         }
     }
 
-    fn drop_last_plan(&mut self) -> bool {
-        let Some(plan) = self.plans.pop() else {
-            return false;
-        };
-        self.collapsed_changes.remove(&plan);
-        self.collapsed_outputs
-            .retain(|outputs_plan| *outputs_plan != plan);
-        self.dropped_plans += 1;
-        true
-    }
-
     fn note(&self) -> String {
         let mut parts = Vec::new();
-        match (self.plans.is_empty(), self.dropped_plans) {
+        match (
+            self.plan_count,
+            self.collapsed_changes.len() - self.plan_count,
+        ) {
             (_, 0) => {}
-            (true, 1) => parts.push("the plan".to_string()),
-            (true, dropped) => parts.push(format!("all {dropped} plans")),
-            (false, 1) => parts.push("the last plan".to_string()),
-            (false, dropped) => parts.push(format!("the last {dropped} plans")),
+            (0, 1) => parts.push("the plan".to_string()),
+            (0, dropped) => parts.push(format!("all {dropped} plans")),
+            (_, 1) => parts.push("the last plan".to_string()),
+            (_, dropped) => parts.push(format!("the last {dropped} plans")),
         }
-        let collapsed_changes = self.collapsed_changes.values().map(Vec::len).sum();
+        let collapsed_changes = self.collapsed_changes[..self.plan_count]
+            .iter()
+            .map(Vec::len)
+            .sum();
         if collapsed_changes > 0 {
             parts.push(format!("values of {}", count(collapsed_changes, "change")));
         }
-        if !self.collapsed_outputs.is_empty() {
-            parts.push(format!(
-                "outputs of {}",
-                count(self.collapsed_outputs.len(), "plan")
-            ));
+        let collapsed_outputs = self
+            .collapsed_outputs
+            .iter()
+            .filter(|&&plan| plan < self.plan_count)
+            .count();
+        if collapsed_outputs > 0 {
+            parts.push(format!("outputs of {}", count(collapsed_outputs, "plan")));
         }
         let parts = match parts.split_last() {
             Some((last, rest)) if !rest.is_empty() => format!("{} and {last}", rest.join(", ")),
@@ -215,16 +227,16 @@ impl Limits {
 
     fn insert_options(&self, options: &mut tera::RenderOptions) {
         options.insert(
-            "plans".to_string(),
-            tera::RenderOptionValue::Strings(self.plans.clone()),
+            "plan_count".to_string(),
+            tera::RenderOptionValue::Count(self.plan_count),
         );
         options.insert(
             "collapsed_changes".to_string(),
-            tera::RenderOptionValue::Indices(self.collapsed_changes.clone()),
+            tera::RenderOptionValue::IndexLists(self.collapsed_changes.clone()),
         );
         options.insert(
             "collapsed_outputs".to_string(),
-            tera::RenderOptionValue::Strings(self.collapsed_outputs.clone()),
+            tera::RenderOptionValue::Indices(self.collapsed_outputs.clone()),
         );
         options.insert(
             "note".to_string(),
@@ -280,7 +292,7 @@ mod tests {
         use super::*;
         use crate::utils;
 
-        const COLLAPSED: &str = "_Values not shown to fit the length limit_";
+        const COLLAPSED: &str = tera::COLLAPSED_VALUES;
 
         fn get_expected_default() -> String {
             utils::test::get_test_data_file_contents("tera/renders/github_markdown/default.md")
@@ -293,10 +305,14 @@ mod tests {
         fn get_outputs_data() -> tf::Data {
             let tool = tf::tests::Tool::Terraform;
             let plan_type = tf::tests::PlanType::Outputs;
-            tf::Data::new(std::collections::HashMap::from([(
+            tf::Data::new(std::collections::BTreeMap::from([(
                 tf::tests::get_test_plan_file(&tool, &plan_type),
                 tf::tests::get_test_plan(&tool, &plan_type),
             )]))
+        }
+
+        fn get_plan(plan_type: tf::tests::PlanType) -> tf::Plan {
+            tf::tests::get_test_plan(&tf::tests::Tool::Terraform, &plan_type)
         }
 
         fn get_plan_section<'a>(result: &'a str, title: &str) -> &'a str {
@@ -387,6 +403,82 @@ mod tests {
         }
 
         #[test]
+        fn plan_key_with_special_characters() {
+            let data = tf::Data::new(std::collections::BTreeMap::from([(
+                "envs/[\"prod\"]/plan.json".to_string(),
+                get_plan(tf::tests::PlanType::UpdateArray),
+            )]));
+            let full = render_github(&data, false, false, false, None).unwrap();
+            let result = render_capped(&data, full.len() - 1);
+
+            assert!(result.contains(&format!(
+                "<summary>🔄terraform_data.foo-bar\n</summary>\n\n{COLLAPSED}\n\n</details>"
+            )));
+            assert_eq!(1, result.matches(COLLAPSED).count());
+            assert_eq!(
+                format!(
+                    "_Output limited to {} bytes: values of 1 change not shown_",
+                    full.len() - 1
+                ),
+                get_note(&result)
+            );
+        }
+
+        #[test]
+        fn never_collapses_small_blocks() {
+            let mut small = get_plan(tf::tests::PlanType::Create);
+            let mut change = get_plan(tf::tests::PlanType::Create).changes.remove(0);
+            change.address = "terraform_data.small".to_string();
+            change.after = Some(tf::ValueMap::from([(
+                "a".to_string(),
+                tf::Value::String("b".to_string()),
+            )]));
+            small.changes.push(change);
+            let data = tf::Data::new(std::collections::BTreeMap::from([
+                ("a/plan.json".to_string(), small),
+                (
+                    "b/plan.json".to_string(),
+                    get_plan(tf::tests::PlanType::UpdateArray),
+                ),
+            ]));
+            assert_eq!(2, get_values_blocks(&data, &[], false).len());
+
+            let full = render_github(&data, false, false, false, None).unwrap();
+            let mut dropped_with_small_shown = 0;
+            for max_length in (0..full.len()).step_by(10) {
+                let result = render_capped(&data, max_length);
+                let small_shown = result
+                    .contains("<summary>✅terraform_data.small\n</summary>\n\n```\na: \"b\"\n```");
+                assert!(
+                    small_shown || !result.contains("terraform_data.small"),
+                    "{max_length}: {result}"
+                );
+                if small_shown && result.contains("the last plan") {
+                    dropped_with_small_shown += 1;
+                }
+            }
+            // A plan is dropped only once collapsing every candidate did not fit, a small candidate would be collapsed
+            assert!(dropped_with_small_shown > 0);
+        }
+
+        #[test]
+        fn drops_fewest_plans() {
+            for max_length in 0..1100 {
+                let mut renders = 0;
+                let fits = |plan_count: usize| plan_count * 100 + 10 <= max_length;
+                let plan_count = get_fitting_plan_count(10, |plan_count| {
+                    renders += 1;
+                    Ok(fits(plan_count))
+                })
+                .unwrap();
+
+                assert!(fits(plan_count) || plan_count == 0, "{max_length}");
+                assert!(plan_count == 9 || !fits(plan_count + 1), "{max_length}");
+                assert!(renders <= 4, "{max_length}");
+            }
+        }
+
+        #[test]
         fn never_exceeds_cap() {
             let data = tf::tests::get_test_data();
             for show_changed_values in [false, true] {
@@ -428,21 +520,17 @@ mod tests {
         use super::*;
 
         fn get_note(
-            plans: &[&str],
-            dropped_plans: usize,
-            collapsed_changes: &[(&str, Vec<usize>)],
-            collapsed_outputs: &[&str],
+            plans: usize,
+            plan_count: usize,
+            collapsed_changes: &[(usize, Vec<usize>)],
+            collapsed_outputs: &[usize],
         ) -> String {
-            let limits = Limits {
-                max_length: 65536,
-                plans: plans.iter().map(ToString::to_string).collect(),
-                dropped_plans,
-                collapsed_changes: collapsed_changes
-                    .iter()
-                    .map(|(plan, indices)| ((*plan).to_string(), indices.clone()))
-                    .collect(),
-                collapsed_outputs: collapsed_outputs.iter().map(ToString::to_string).collect(),
-            };
+            let mut limits = Limits::new(65536, plans);
+            limits.plan_count = plan_count;
+            for (plan, indices) in collapsed_changes {
+                limits.collapsed_changes[*plan].clone_from(indices);
+            }
+            limits.collapsed_outputs = collapsed_outputs.to_vec();
             limits.note()
         }
 
@@ -450,11 +538,11 @@ mod tests {
         fn changes() {
             assert_eq!(
                 "Output limited to 65536 bytes: values of 1 change not shown",
-                get_note(&["a"], 0, &[("a", vec![0])], &[])
+                get_note(1, 1, &[(0, vec![0])], &[])
             );
             assert_eq!(
                 "Output limited to 65536 bytes: values of 3 changes not shown",
-                get_note(&["a", "b"], 0, &[("a", vec![0, 2]), ("b", vec![1])], &[])
+                get_note(2, 2, &[(0, vec![0, 2]), (1, vec![1])], &[])
             );
         }
 
@@ -462,7 +550,7 @@ mod tests {
         fn outputs() {
             assert_eq!(
                 "Output limited to 65536 bytes: outputs of 2 plans not shown",
-                get_note(&["a", "b"], 0, &[], &["a", "b"])
+                get_note(2, 2, &[], &[0, 1])
             );
         }
 
@@ -470,7 +558,7 @@ mod tests {
         fn changes_and_outputs() {
             assert_eq!(
                 "Output limited to 65536 bytes: values of 2 changes and outputs of 1 plan not shown",
-                get_note(&["a"], 0, &[("a", vec![0, 1])], &["a"])
+                get_note(1, 1, &[(0, vec![0, 1])], &[0])
             );
         }
 
@@ -478,11 +566,19 @@ mod tests {
         fn plans() {
             assert_eq!(
                 "Output limited to 65536 bytes: the last plan, values of 1 change and outputs of 1 plan not shown",
-                get_note(&["a"], 1, &[("a", vec![0])], &["a"])
+                get_note(2, 1, &[(0, vec![0])], &[0])
             );
             assert_eq!(
                 "Output limited to 65536 bytes: the last 3 plans and values of 1 change not shown",
-                get_note(&["a"], 3, &[("a", vec![0])], &[])
+                get_note(4, 1, &[(0, vec![0])], &[])
+            );
+        }
+
+        #[test]
+        fn dropped_plans_not_counted() {
+            assert_eq!(
+                "Output limited to 65536 bytes: the last plan and values of 1 change not shown",
+                get_note(2, 1, &[(0, vec![0]), (1, vec![0, 1])], &[1])
             );
         }
 
@@ -490,11 +586,11 @@ mod tests {
         fn all_plans() {
             assert_eq!(
                 "Output limited to 65536 bytes: the plan not shown",
-                get_note(&[], 1, &[], &[])
+                get_note(1, 0, &[(0, vec![0])], &[0])
             );
             assert_eq!(
                 "Output limited to 65536 bytes: all 2 plans not shown",
-                get_note(&[], 2, &[], &[])
+                get_note(2, 0, &[], &[])
             );
         }
     }
