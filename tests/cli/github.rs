@@ -66,9 +66,8 @@ fn show_no_op() -> Result<(), Box<dyn std::error::Error>> {
 
 #[test]
 fn show_read() -> Result<(), Box<dyn std::error::Error>> {
-    // No test plan has a read change, so the flag must leave the default render as is
     let expected_result =
-        utils::get_test_data_file_contents("tera/renders/github_markdown/default.md");
+        utils::get_test_data_file_contents("tera/renders/github_markdown/show_read.md");
 
     let mut cmd = Command::cargo_bin("tf_plan_format")?;
     cmd.arg("github");

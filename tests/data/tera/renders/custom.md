@@ -10,6 +10,8 @@ tests/data/plans/no-resources/opentofu.tfplan.json
 tests/data/plans/no-resources/terraform.tfplan.json
 tests/data/plans/outputs/opentofu.tfplan.json
 tests/data/plans/outputs/terraform.tfplan.json
+tests/data/plans/read/opentofu.tfplan.json
+tests/data/plans/read/terraform.tfplan.json
 tests/data/plans/sensitive/opentofu.tfplan.json
 tests/data/plans/sensitive/terraform.tfplan.json
 tests/data/plans/update-array/opentofu.tfplan.json

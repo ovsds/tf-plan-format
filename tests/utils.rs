@@ -24,6 +24,7 @@ pub fn get_plan_files() -> Vec<std::string::String> {
             "no-op",
             "no-resources",
             "outputs",
+            "read",
             "sensitive",
             "update",
             "update-array",

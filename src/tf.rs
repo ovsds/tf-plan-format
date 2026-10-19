@@ -688,6 +688,7 @@ pub mod tests {
         NoOp,
         NoResources,
         Outputs,
+        Read,
         Sensitive,
         Update,
         UpdateArray,
@@ -703,6 +704,7 @@ pub mod tests {
                 PlanType::NoOp,
                 PlanType::NoResources,
                 PlanType::Outputs,
+                PlanType::Read,
                 PlanType::Sensitive,
                 PlanType::Update,
                 PlanType::UpdateArray,
@@ -746,6 +748,7 @@ pub mod tests {
             PlanType::NoOp => "no-op",
             PlanType::NoResources => "no-resources",
             PlanType::Outputs => "outputs",
+            PlanType::Read => "read",
             PlanType::Sensitive => "sensitive",
             PlanType::Update => "update",
             PlanType::UpdateArray => "update-array",
@@ -1849,6 +1852,7 @@ pub mod tests {
                 terraform_no_op, Tool::Terraform, PlanType::NoOp
                 terraform_no_resources, Tool::Terraform, PlanType::NoResources
                 terraform_outputs, Tool::Terraform, PlanType::Outputs
+                terraform_read, Tool::Terraform, PlanType::Read
                 terraform_sensitive, Tool::Terraform, PlanType::Sensitive
                 terraform_update, Tool::Terraform, PlanType::Update
                 terraform_update_array, Tool::Terraform, PlanType::UpdateArray
@@ -1858,6 +1862,7 @@ pub mod tests {
                 opentofu_no_op, Tool::OpenTofu, PlanType::NoOp
                 opentofu_no_resources, Tool::OpenTofu, PlanType::NoResources
                 opentofu_outputs, Tool::OpenTofu, PlanType::Outputs
+                opentofu_read, Tool::OpenTofu, PlanType::Read
                 opentofu_sensitive, Tool::OpenTofu, PlanType::Sensitive
                 opentofu_update, Tool::OpenTofu, PlanType::Update
                 opentofu_update_array, Tool::OpenTofu, PlanType::UpdateArray

@@ -159,6 +159,36 @@ unknown: "foo" -> (known after apply)
 </details>
 </details>
 <details>
+<summary>🔄read/opentofu.tfplan.json - Plan: 0 to add, 1 to change, 0 to destroy</summary>
+<details>
+<summary>🔄terraform_data.foo-bar
+</summary>
+
+```
+id: "f7a1ff7f-088b-ca29-6456-8a47bd2ce523"
+input: "foo" -> "bar"
+output: "foo" -> (known after apply)
+triggers_replace: null
+```
+
+</details>
+</details>
+<details>
+<summary>🔄read/terraform.tfplan.json - Plan: 0 to add, 1 to change, 0 to destroy</summary>
+<details>
+<summary>🔄terraform_data.foo-bar
+</summary>
+
+```
+id: "2216c960-d6d5-6a9e-ea6c-1df838857438"
+input: "foo" -> "bar"
+output: "foo" -> (known after apply)
+triggers_replace: null
+```
+
+</details>
+</details>
+<details>
 <summary>♻️sensitive/opentofu.tfplan.json - Plan: 1 to add, 0 to change, 1 to destroy</summary>
 <details>
 <summary>♻️random_bytes.test
