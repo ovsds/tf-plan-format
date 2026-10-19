@@ -191,7 +191,7 @@ opentofu = "1.13.1"
 "github:ovsds/tf-plan-format" = "0.1.0"
 ```
 
-Then plan on every pull request and keep one plan comment up to date with [create-or-update-unique-comment-action](https://github.com/ovsds/create-or-update-unique-comment-action), which finds the comment by its `## Plan` heading. The plan and its JSON stay in the runner's temporary directory and are never uploaded. `--max-length 65000` leaves headroom under GitHub's 65536 character comment limit.
+Then plan on every pull request and keep one plan comment up to date with [create-or-update-unique-comment-action](https://github.com/ovsds/create-or-update-unique-comment-action), which finds the comment again by the hidden `<!-- tf-plan-format -->` marker. The plan and its JSON stay in the runner's temporary directory and are never uploaded. `--max-length 65000` leaves headroom under GitHub's 65536 character comment limit.
 
 ```yaml
 on: pull_request
@@ -216,14 +216,14 @@ jobs:
           tofu init -input=false
           tofu plan -input=false -out="$RUNNER_TEMP/infra/plan.tfplan"
           tofu show -json "$RUNNER_TEMP/infra/plan.tfplan" > "$RUNNER_TEMP/infra/plan.json"
-          echo "## Plan" > "$RUNNER_TEMP/plan.md"
+          printf '<!-- tf-plan-format -->\n## Plan\n' > "$RUNNER_TEMP/plan.md"
           tf_plan_format github --file "$RUNNER_TEMP/infra/plan.json" --max-length 65000 >> "$RUNNER_TEMP/plan.md"
 
       - uses: ovsds/create-or-update-unique-comment-action@df30f5f96aa71679deb9eb697c98f39ee9e26651 # v1.1.0
         with:
           issue-number: ${{ github.event.pull_request.number }}
           body-path: ${{ runner.temp }}/plan.md
-          unique-body-includes: "## Plan"
+          unique-body-includes: "<!-- tf-plan-format -->"
 ```
 
 ## Development
