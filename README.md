@@ -184,15 +184,16 @@ length: 4 -> 8
 
 ### GitHub Actions
 
-Pin the tools in the repository's `mise.toml` (`mise use` writes it):
+[tf-plan-format-action](https://github.com/ovsds/tf-plan-format-action) installs a `tf_plan_format` release, renders the given plans with the `github` command and returns the markdown as the `rendered-plan` output and as a file at `rendered-plan-path`. It does not cap the output (there is no `--max-length`), while GitHub comments stop at 65536 characters: for plans that large, run the CLI with `--max-length` instead.
+
+Pin OpenTofu in the repository's `mise.toml` (`mise use` writes it):
 
 ```toml
 [tools]
 opentofu = "1.13.1"
-"github:ovsds/tf-plan-format" = "0.2.0"
 ```
 
-Then plan on every pull request and keep one plan comment up to date with [create-or-update-unique-comment-action](https://github.com/ovsds/create-or-update-unique-comment-action), which finds the comment again by the hidden `<!-- tf-plan-format -->` line the `github` output carries (from 0.2.0). The plan and its JSON stay in the runner's temporary directory and are never uploaded. `--max-length 65000` leaves headroom under GitHub's 65536 character comment limit.
+Then plan on every pull request and keep one plan comment up to date with [create-or-update-unique-comment-action](https://github.com/ovsds/create-or-update-unique-comment-action), which finds the comment again by the hidden `<!-- tf-plan-format -->` line the `github` output carries (from 0.2.0). The plan and its JSON stay in the runner's temporary directory and are never uploaded.
 
 ```yaml
 on: pull_request
@@ -217,12 +218,16 @@ jobs:
           tofu init -input=false
           tofu plan -input=false -out="$RUNNER_TEMP/infra/plan.tfplan"
           tofu show -json "$RUNNER_TEMP/infra/plan.tfplan" > "$RUNNER_TEMP/infra/plan.json"
-          tf_plan_format github --file "$RUNNER_TEMP/infra/plan.json" --max-length 65000 > "$RUNNER_TEMP/plan.md"
+
+      - id: tf-plan-format
+        uses: ovsds/tf-plan-format-action@a1111c18db907140d366a097c30f359e85cfebc5 # v1.0.0
+        with:
+          plan-files: ${{ runner.temp }}/infra/plan.json
 
       - uses: ovsds/create-or-update-unique-comment-action@df30f5f96aa71679deb9eb697c98f39ee9e26651 # v1.1.0
         with:
           issue-number: ${{ github.event.pull_request.number }}
-          body-path: ${{ runner.temp }}/plan.md
+          body-path: ${{ steps.tf-plan-format.outputs.rendered-plan-path }}
           unique-body-includes: "<!-- tf-plan-format -->"
 ```
 
