@@ -6,12 +6,21 @@ Renders Terraform and OpenTofu plans (the JSON from `show -json`) as GitHub mark
 
 ## Installation
 
-Release tags are plain versions without a `v` prefix (`0.1.0`), matching the version in `Cargo.toml`. Pick a version from the [releases page](https://github.com/ovsds/tf-plan-format/releases); `0.1.0` below is a placeholder.
+Release tags are plain versions without a `v` prefix (`0.1.0`), matching the version in `Cargo.toml`. Pick a version from the [releases page](https://github.com/ovsds/tf-plan-format/releases); `0.2.0` below is a placeholder: it is the first release whose `github` output carries the comment marker.
+
+### Install script
+
+[setup.sh](setup.sh) downloads the release archive for your platform (Linux or macOS, amd64 or arm64), checks it against the release's `checksums.txt` and installs `tf_plan_format` into `~/.local/bin`, or into the directory given as the second argument. The first argument is the version, the latest release when omitted or `latest`:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/ovsds/tf-plan-format/main/setup.sh | bash
+curl -fsSL https://raw.githubusercontent.com/ovsds/tf-plan-format/main/setup.sh | bash -s -- 0.2.0 "$HOME/bin"
+```
 
 ### mise
 
 ```sh
-mise use github:ovsds/tf-plan-format@0.1.0
+mise use github:ovsds/tf-plan-format@0.2.0
 ```
 
 This installs the `tf_plan_format` executable from the release archive for your platform.
@@ -21,7 +30,8 @@ This installs the `tf_plan_format` executable from the release archive for your 
 Each release has an archive per platform, `tf_plan_format-<version>-<os>-<arch>.tar.gz`, for `linux-amd64`, `linux-arm64`, `darwin-amd64` and `darwin-arm64`, plus a `checksums.txt` with their SHA-256 sums. The archive holds the single `tf_plan_format` executable. Linux binaries are built for glibc; on musl-based systems use the container image.
 
 ```sh
-curl -fsSL https://github.com/ovsds/tf-plan-format/releases/download/0.1.0/tf_plan_format-0.1.0-linux-amd64.tar.gz | tar -xz -C ~/.local/bin tf_plan_format
+mkdir -p ~/.local/bin
+curl -fsSL https://github.com/ovsds/tf-plan-format/releases/download/0.2.0/tf_plan_format-0.2.0-linux-amd64.tar.gz | tar -xz -C ~/.local/bin tf_plan_format
 ```
 
 ### Container image
@@ -29,18 +39,7 @@ curl -fsSL https://github.com/ovsds/tf-plan-format/releases/download/0.1.0/tf_pl
 Each release also publishes `ghcr.io/ovsds/tf-plan-format:<release tag>` for `linux/amd64` and `linux/arm64`: a statically linked binary in an empty (`scratch`) image whose entrypoint is `tf_plan_format`.
 
 ```sh
-docker run --rm -v "$PWD:/infra:ro" ghcr.io/ovsds/tf-plan-format:0.1.0 github --file /infra/plan.json
-```
-
-## Installation
-
-### Install script
-
-[setup.sh](setup.sh) downloads the release archive for your platform (Linux or macOS, amd64 or arm64), checks it against the release's `checksums.txt` and installs `tf_plan_format` into `~/.local/bin`, or into the directory given as the second argument. The first argument is the version, the latest release when omitted or `latest`:
-
-```sh
-curl -fsSL https://raw.githubusercontent.com/ovsds/tf-plan-format/main/setup.sh | bash
-curl -fsSL https://raw.githubusercontent.com/ovsds/tf-plan-format/main/setup.sh | bash -s -- 0.2.0 "$HOME/bin"
+docker run --rm -v "$PWD:/infra:ro" ghcr.io/ovsds/tf-plan-format:0.2.0 github --file /infra/plan.json
 ```
 
 ## Usage
@@ -55,7 +54,7 @@ terraform plan -out=plan.tfplan && terraform show -json plan.tfplan > plan.json
 > [!WARNING]
 > The plan file and its JSON contain sensitive values in clear text. Do not commit, publish or upload them as CI artifacts; keep them in a temporary directory.
 
-Both commands read plans with `-f`, `--file`: a path or a glob (quote it so the tool expands it). Repeat the flag or pass several values to read several plans; they are rendered in path order. Without `--file` there is nothing to render: `github` prints an empty line and `custom` gets no plans. A path or glob that matches no file, a file that cannot be read, or JSON that does not have the shape of a plan fails the command with exit code 65. Pass the output of `show -json` on a plan file: `show -json` on the state is read as a plan without changes.
+Both commands read plans with `-f`, `--file`: a path or a glob (quote it so the tool expands it). Repeat the flag or pass several values to read several plans; they are rendered in path order. Without `--file` there is nothing to render: `github` prints only its marker line and an empty line, and `custom` gets no plans. A path or glob that matches no file, a file that cannot be read, or JSON that does not have the shape of a plan fails the command with exit code 65. Pass the output of `show -json` on a plan file: `show -json` on the state is read as a plan without changes.
 
 Actions are shown as icons: ✅ create, ♻️ replace (delete and create), 🔍 read, 🔄 update, ❌ delete, 🟰 no-op, ❓ unknown.
 
@@ -63,6 +62,7 @@ Actions are shown as icons: ✅ create, ♻️ replace (delete and create), 🔍
 
 Renders GitHub markdown for a PR comment:
 
+- a hidden `<!-- tf-plan-format -->` first line (from 0.2.0), to find the comment again when updating it;
 - one collapsible block per plan, titled from its path: the file name is dropped when all plans share it, then the leading directories all plans share, so `plans/prod/plan.json` and `plans/stage/plan.json` become `prod` and `stage`, and a single `infra/plan.json` becomes `infra`;
 - the block's summary shows the icons of the changes it shows and of its output changes, the title and `Plan: X to add, Y to change, Z to destroy`, or `No changes`;
 - inside, a collapsible block per resource change with its address and values, and an `Outputs` block when outputs change.
@@ -77,13 +77,14 @@ Sensitive values are shown as `sensitive`, `sensitive (changed)` or `sensitive (
 | `--show-read`            | off     | Render data source reads                                                                                                                                             |
 | `--max-length`           | none    | Limit the output length, see below                                                                                                                                   |
 
-With `--max-length`, output longer than the limit (in bytes, the trailing newline not counted) is shortened: the largest values blocks are replaced with `_Values not shown to fit the length limit_` until it fits, and if that is not enough the last plans are dropped. A closing note says what was left out, for example `_Output limited to 1500 bytes: the last 3 plans, values of 3 changes and outputs of 1 plan not shown_`. If even the note does not fit, only the note is printed.
+With `--max-length`, output longer than the limit (in bytes, the trailing newline not counted) is shortened: the largest values blocks are replaced with `_Values not shown to fit the length limit_` until it fits, and if that is not enough the last plans are dropped. A closing note says what was left out, for example `_Output limited to 1500 bytes: the last 3 plans, values of 3 changes and outputs of 1 plan not shown_`. The marker line counts towards the limit; if even the marker and the note do not fit, only they are printed.
 
 ```sh
 tf_plan_format github --file tests/data/plans/outputs/opentofu.tfplan.json
 ```
 
 ````markdown
+<!-- tf-plan-format -->
 <details>
 <summary>✅🔄❌outputs - Plan: 0 to add, 1 to change, 0 to destroy</summary>
 <details>
@@ -188,10 +189,10 @@ Pin the tools in the repository's `mise.toml` (`mise use` writes it):
 ```toml
 [tools]
 opentofu = "1.13.1"
-"github:ovsds/tf-plan-format" = "0.1.0"
+"github:ovsds/tf-plan-format" = "0.2.0"
 ```
 
-Then plan on every pull request and keep one plan comment up to date with [create-or-update-unique-comment-action](https://github.com/ovsds/create-or-update-unique-comment-action), which finds the comment again by the hidden `<!-- tf-plan-format -->` marker. The plan and its JSON stay in the runner's temporary directory and are never uploaded. `--max-length 65000` leaves headroom under GitHub's 65536 character comment limit.
+Then plan on every pull request and keep one plan comment up to date with [create-or-update-unique-comment-action](https://github.com/ovsds/create-or-update-unique-comment-action), which finds the comment again by the hidden `<!-- tf-plan-format -->` line the `github` output carries (from 0.2.0). The plan and its JSON stay in the runner's temporary directory and are never uploaded. `--max-length 65000` leaves headroom under GitHub's 65536 character comment limit.
 
 ```yaml
 on: pull_request
@@ -216,7 +217,7 @@ jobs:
           tofu init -input=false
           tofu plan -input=false -out="$RUNNER_TEMP/infra/plan.tfplan"
           tofu show -json "$RUNNER_TEMP/infra/plan.tfplan" > "$RUNNER_TEMP/infra/plan.json"
-          printf '<!-- tf-plan-format -->\n## Plan\n' > "$RUNNER_TEMP/plan.md"
+          printf '## Plan\n' > "$RUNNER_TEMP/plan.md"
           tf_plan_format github --file "$RUNNER_TEMP/infra/plan.json" --max-length 65000 >> "$RUNNER_TEMP/plan.md"
 
       - uses: ovsds/create-or-update-unique-comment-action@df30f5f96aa71679deb9eb697c98f39ee9e26651 # v1.1.0
