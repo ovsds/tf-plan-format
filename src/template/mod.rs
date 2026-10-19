@@ -65,7 +65,7 @@ pub fn render_github(
     };
 
     let mut result = render(None)?;
-    let Some(max_length) = max_length else {
+    let Some(max_length) = max_length.filter(|&max_length| result.len() > max_length) else {
         return Ok(result);
     };
 
@@ -74,19 +74,18 @@ pub fn render_github(
         plans: get_plan_keys(data),
         ..Limits::default()
     };
-    let mut blocks = get_values_blocks(data, &hidden_actions, show_changed_values)
-        .into_iter()
-        .peekable();
-    while result.len() > max_length && blocks.peek().is_some() {
+    let mut blocks =
+        get_values_blocks(data, &limits.plans, &hidden_actions, show_changed_values).into_iter();
+    while result.len() > max_length && blocks.len() > 0 {
         // Values length alone estimates the saving, the re-render accounts for the markup and the note
         let excess = result.len() - max_length;
         let mut saving = 0;
-        while saving < excess {
-            let Some(block) = blocks.next() else {
-                break;
-            };
+        for block in blocks.by_ref() {
             saving += block.length;
             limits.collapse(block);
+            if saving >= excess {
+                break;
+            }
         }
         result = render(Some(&limits))?;
     }
@@ -115,40 +114,39 @@ struct ValuesBlock {
 /// Values blocks the github template renders, largest first, ties in render order
 fn get_values_blocks(
     data: &tf::Data,
+    plans: &[String],
     hidden_actions: &[tf::Action],
     show_changed_values: bool,
 ) -> Vec<ValuesBlock> {
     let mut blocks = Vec::new();
-    for plan_key in get_plan_keys(data) {
-        let plan = &data.plans[&plan_key];
+    for plan_key in plans {
+        let plan = &data.plans[plan_key];
         let changes = plan
             .changes
             .iter()
-            .filter(|change| tera::keeps_action(&change.action, hidden_actions, false));
-        for (index, change) in changes.enumerate() {
-            let values = tera::render_values(
-                change.before.as_ref(),
-                change.after.as_ref(),
-                show_changed_values,
-            );
-            blocks.push(ValuesBlock {
-                plan: plan_key.clone(),
-                kind: ValuesBlockKind::Change(index),
-                length: values.len(),
+            .filter(|change| !hidden_actions.contains(&change.action))
+            .enumerate()
+            .map(|(index, change)| {
+                let kind = ValuesBlockKind::Change(index);
+                (kind, change.before.as_ref(), change.after.as_ref())
             });
-        }
-        if !plan.outputs.actions.is_empty() {
-            let values = tera::render_values(
-                Some(&plan.outputs.before),
-                Some(&plan.outputs.after),
-                show_changed_values,
-            );
-            blocks.push(ValuesBlock {
-                plan: plan_key,
-                kind: ValuesBlockKind::Outputs,
-                length: values.len(),
-            });
-        }
+        let outputs = (!plan.outputs.actions.is_empty()).then(|| {
+            let outputs = &plan.outputs;
+            (
+                ValuesBlockKind::Outputs,
+                Some(&outputs.before),
+                Some(&outputs.after),
+            )
+        });
+        blocks.extend(
+            changes
+                .chain(outputs)
+                .map(|(kind, before, after)| ValuesBlock {
+                    plan: plan_key.clone(),
+                    kind,
+                    length: tera::render_values(before, after, show_changed_values).len(),
+                }),
+        );
     }
     blocks.sort_by_key(|block| std::cmp::Reverse(block.length));
     blocks

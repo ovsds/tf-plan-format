@@ -104,18 +104,12 @@ fn tera_filter_actions(value: &tera::Value, args: &Args) -> tera::Result<tera::V
             .get("action")
             .ok_or("action must be present in items")?;
         let action = tera::from_value::<tf::Action>(action.clone())?;
-        if keeps_action(&action, &actions, include) {
+        if actions.contains(&action) == include {
             result.push(item);
         }
     }
 
     Ok(tera::Value::Array(result))
-}
-
-/// The `filter_actions` rule, shared so code can find the items the template renders
-#[must_use]
-pub fn keeps_action(action: &tf::Action, actions: &[tf::Action], include: bool) -> bool {
-    actions.contains(action) == include
 }
 
 fn render_plaintext(value: &tf::Value) -> String {
