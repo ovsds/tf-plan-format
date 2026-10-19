@@ -55,7 +55,7 @@ terraform plan -out=plan.tfplan && terraform show -json plan.tfplan > plan.json
 > [!WARNING]
 > The plan file and its JSON contain sensitive values in clear text. Do not commit, publish or upload them as CI artifacts; keep them in a temporary directory.
 
-Both commands read plans with `-f`, `--file`: a path or a glob (quote it so the tool expands it). Repeat the flag or pass several values to read several plans; they are rendered in path order. Without `--file` there is nothing to render: `github` prints an empty line. A path or glob that matches no file, or a file that is not JSON, fails the command with exit code 65; any other JSON object is read as a plan, one without `resource_changes` as a plan with no changes, so pass the output of `show -json` on a plan file, not on the state.
+Both commands read plans with `-f`, `--file`: a path or a glob (quote it so the tool expands it). Repeat the flag or pass several values to read several plans; they are rendered in path order. Without `--file` there is nothing to render: `github` prints an empty line and `custom` gets no plans. A path or glob that matches no file, a file that cannot be read, or JSON that does not have the shape of a plan fails the command with exit code 65. Pass the output of `show -json` on a plan file: `show -json` on the state is read as a plan without changes.
 
 Actions are shown as icons: ✅ create, ♻️ replace (delete and create), 🔍 read, 🔄 update, ❌ delete, 🟰 no-op, ❓ unknown.
 
@@ -75,7 +75,7 @@ Sensitive values are shown as `sensitive`, `sensitive (changed)` or `sensitive (
 | `-c`, `--changed-values` | off     | Also list the attributes and array elements that did not change; by default updates and replacements list only what changed (skipped array elements show as `- ...`) |
 | `--show-no-op`           | off     | Render no-op changes                                                                                                                                                 |
 | `--show-read`            | off     | Render data source reads                                                                                                                                             |
-| `--max-length <N>`       | none    | Limit the output length, see below                                                                                                                                   |
+| `--max-length`           | none    | Limit the output length, see below                                                                                                                                   |
 
 With `--max-length`, output longer than the limit (in bytes, the trailing newline not counted) is shortened: the largest values blocks are replaced with `_Values not shown to fit the length limit_` until it fits, and if that is not enough the last plans are dropped. A closing note says what was left out, for example `_Output limited to 1500 bytes: the last 3 plans, values of 3 changes and outputs of 1 plan not shown_`. If even the note does not fit, only the note is printed.
 
@@ -127,11 +127,11 @@ Renders your own template:
 `data.plans` maps each plan's file path to the plan, sorted by path. A plan has:
 
 - `title`: the short title described for `github`;
-- `changes`: the resource changes in plan order, each with `address`, `name`, `action`, `before` and `after` (attribute name to value, `null` when the resource does not exist on that side) and `raw`, the parts of the change the tool reads (`address`, `name` and `change`; other fields such as `type` are not kept);
+- `changes`: the resource changes in plan order, each with `address`, `name`, `action`, `before` and `after` (attribute name to value, `null` when the resource does not exist on that side) and `raw`, the parts of the change the tool reads: `address`, `name` and `change` with its `actions`, `before`, `after`, `after_unknown`, `before_sensitive` and `after_sensitive` (other fields such as `type` are not kept, missing ones are `null`);
 - `unique_actions`: the distinct actions of `changes`;
 - `summary`: the `add`, `change` and `destroy` counts of `Plan: X to add, ...`, where a replacement counts in both `add` and `destroy`;
 - `outputs`: the changed outputs, with `before` and `after` (output name to value) and `actions`, their distinct actions;
-- `raw`: the plan's `resource_changes` and `output_changes`, limited to the fields the tool reads.
+- `raw`: the plan's `resource_changes` and `output_changes` (`null` when the plan has none), limited to the fields the tool reads.
 
 `raw` is not masked: it holds sensitive values in clear text.
 
