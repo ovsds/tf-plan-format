@@ -57,6 +57,11 @@ pub enum Commands {
         show_no_op: bool,
         #[clap(long, help = "Whether to render read changes", default_value = "false")]
         show_read: bool,
+        #[clap(
+            long,
+            help = "Maximum output length in bytes, the trailing newline not counted. Collapses the largest values blocks, then drops the last plans, and notes what was left out; if even the note does not fit, only the note is printed"
+        )]
+        max_length: Option<usize>,
     },
 }
 
@@ -79,7 +84,15 @@ pub fn root(
             changed_values,
             show_no_op,
             show_read,
-        }) => github(file, *changed_values, *show_no_op, *show_read, stdout),
+            max_length,
+        }) => github(
+            file,
+            *changed_values,
+            *show_no_op,
+            *show_read,
+            *max_length,
+            stdout,
+        ),
         None => none(stdout, stderr),
     }
 }
@@ -116,6 +129,7 @@ fn github(
     show_changed_values: bool,
     show_no_op: bool,
     show_read: bool,
+    max_length: Option<usize>,
     mut stdout: impl std::io::Write,
 ) -> Result<(), types::Error> {
     let data = tf::Data::from_files(files).map_err(|e| {
@@ -123,14 +137,20 @@ fn github(
     })?;
 
     // Should never fail as the template is hardcoded
-    let result = template::render_github(&data, show_changed_values, show_no_op, show_read)
-        .map_err(|e| {
-            types::Error::command(
-                "Failed to render template".to_string(),
-                exitcode::DATAERR,
-                e,
-            )
-        })?;
+    let result = template::render_github(
+        &data,
+        show_changed_values,
+        show_no_op,
+        show_read,
+        max_length,
+    )
+    .map_err(|e| {
+        types::Error::command(
+            "Failed to render template".to_string(),
+            exitcode::DATAERR,
+            e,
+        )
+    })?;
 
     writeln!(stdout, "{result}").unwrap();
 

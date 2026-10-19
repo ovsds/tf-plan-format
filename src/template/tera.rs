@@ -10,9 +10,23 @@ use std::collections::HashSet;
 const INDENT_STR: &str = "  ";
 const MAX_ARRAY_DIFF_CELLS: usize = 4_000_000;
 
-pub const GITHUB_MARKDOWN_TEMPLATE: &str = "
+macro_rules! collapsed_values {
+    () => {
+        "_Values not shown to fit the length limit_"
+    };
+}
+
+/// What the github template renders in place of a collapsed values block
+pub const COLLAPSED_VALUES: &str = collapsed_values!();
+
+pub const GITHUB_MARKDOWN_TEMPLATE: &str = concat!("
+{%- set plan_count = options.plan_count | default(value=data.plans | length) %}
+{%- set collapsed_outputs = options.collapsed_outputs | default(value=[]) %}
 {%- for plan_key, plan in data.plans %}
-{%- set changes = plan.changes | filter_actions(exclude=options.hidden_actions) %}<details>
+{%- set plan_index = loop.index0 %}
+{%- if plan_index < plan_count %}
+{%- set changes = plan.changes | filter_actions(exclude=options.hidden_actions) %}
+{%- set collapsed_changes = options.collapsed_changes[plan_index] | default(value=[]) %}<details>
 <summary>{{ render_actions(actions=changes | map(attribute=\"action\") | concat(with=plan.outputs.actions)) }}{{ plan.title }}
 {%- if plan.summary.add == 0 and plan.summary.change == 0 and plan.summary.destroy == 0 and not changes and not plan.outputs.actions %} - No changes
 {%- else %} - Plan: {{ plan.summary.add }} to add, {{ plan.summary.change }} to change, {{ plan.summary.destroy }} to destroy
@@ -25,9 +39,9 @@ No resource changes
 <summary>{{ render_action(action=change.action) }}{{ change.address }}
 </summary>
 
-```
+{% if loop.index0 in collapsed_changes %}", collapsed_values!(), "{% else %}```
 {{ render_values(before=change.before, after=change.after, show_changed_values=options.show_changed_values) }}
-```
+```{% endif %}
 
 </details>
 {%- endfor %}
@@ -36,15 +50,19 @@ No resource changes
 <summary>{{ render_actions(actions=plan.outputs.actions) }}Outputs
 </summary>
 
-```
+{% if plan_index in collapsed_outputs %}", collapsed_values!(), "{% else %}```
 {{ render_values(before=plan.outputs.before, after=plan.outputs.after, show_changed_values=options.show_changed_values) }}
-```
+```{% endif %}
 
 </details>
 {%- endif %}
 {%- endif %}
 </details>
-{% endfor %}";
+{% endif %}
+{%- endfor %}
+{%- if options.note is defined %}{% if plan_count > 0 %}
+{% endif %}_{{ options.note }}_
+{% endif %}");
 const DEFAULT_SHOW_CHANGED_VALUES: bool = true;
 
 type Args = std::collections::HashMap<String, tera::Value>;
@@ -96,12 +114,18 @@ fn tera_filter_actions(value: &tera::Value, args: &Args) -> tera::Result<tera::V
             .get("action")
             .ok_or("action must be present in items")?;
         let action = tera::from_value::<tf::Action>(action.clone())?;
-        if actions.contains(&action) == include {
+        if keeps_action(&action, &actions, include) {
             result.push(item);
         }
     }
 
     Ok(tera::Value::Array(result))
+}
+
+/// The `filter_actions` rule, shared so code can find the items the template renders
+#[must_use]
+pub fn keeps_action(action: &tf::Action, actions: &[tf::Action], include: bool) -> bool {
+    actions.contains(action) == include
 }
 
 fn render_plaintext(value: &tf::Value) -> String {
@@ -469,20 +493,27 @@ fn tera_render_values(args: &Args) -> tera::Result<tera::Value> {
     let after = tera::from_value::<Option<tf::ValueMap>>(after.clone())?;
     let show_changed_values = tera::from_value::<bool>(show_changed_values.clone())?;
 
-    match (before, after, show_changed_values) {
-        (Some(before), Some(after), _) => {
-            let result = render_changed_hashmap_value(&before, &after, 0, show_changed_values);
-            Ok(tera::Value::String(result.join("\n")))
+    Ok(tera::Value::String(render_values(
+        before.as_ref(),
+        after.as_ref(),
+        show_changed_values,
+    )))
+}
+
+#[must_use]
+pub fn render_values(
+    before: Option<&tf::ValueMap>,
+    after: Option<&tf::ValueMap>,
+    show_changed_values: bool,
+) -> String {
+    match (before, after) {
+        (Some(before), Some(after)) => {
+            render_changed_hashmap_value(before, after, 0, show_changed_values).join("\n")
         }
-        (Some(before), None, _) => {
-            let result = render_unchanged_hashmap_value(&before, 0);
-            Ok(tera::Value::String(result.join("\n")))
+        (Some(values), None) | (None, Some(values)) => {
+            render_unchanged_hashmap_value(values, 0).join("\n")
         }
-        (None, Some(after), _) => {
-            let result = render_unchanged_hashmap_value(&after, 0);
-            Ok(tera::Value::String(result.join("\n")))
-        }
-        _ => Ok(tera::Value::String(String::new())),
+        (None, None) => String::new(),
     }
 }
 
@@ -492,6 +523,9 @@ pub enum RenderOptionValue {
     Bool(bool),
     String(String),
     Actions(Vec<tf::Action>),
+    Count(usize),
+    Indices(Vec<usize>),
+    IndexLists(Vec<Vec<usize>>),
 }
 
 pub type RenderOptions = std::collections::HashMap<String, RenderOptionValue>;

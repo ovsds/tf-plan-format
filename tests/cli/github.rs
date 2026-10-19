@@ -86,6 +86,27 @@ fn show_read() -> Result<(), Box<dyn std::error::Error>> {
 }
 
 #[test]
+fn max_length() -> Result<(), Box<dyn std::error::Error>> {
+    let expected_result =
+        utils::get_test_data_file_contents("tera/renders/github_markdown/max_length.md");
+
+    let mut cmd = Command::cargo_bin("tf_plan_format")?;
+    cmd.arg("github");
+    cmd.arg("--max-length").arg("5000");
+
+    for file in utils::get_plan_files() {
+        cmd.arg("--file").arg(file);
+    }
+
+    cmd.assert().success();
+    cmd.assert().stdout(expected_result + "\n");
+    cmd.assert().stderr("");
+    cmd.assert().code(0);
+
+    Ok(())
+}
+
+#[test]
 fn invalid_files() -> Result<(), Box<dyn std::error::Error>> {
     let mut cmd = Command::cargo_bin("tf_plan_format")?;
     cmd.arg("github");
