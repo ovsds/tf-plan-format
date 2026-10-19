@@ -1,3 +1,4 @@
+<!-- tf-plan-format -->
 <details>
 <summary>✅create/opentofu.tfplan.json - Plan: 1 to add, 0 to change, 0 to destroy</summary>
 <details>

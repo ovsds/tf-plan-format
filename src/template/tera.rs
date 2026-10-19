@@ -19,10 +19,12 @@ macro_rules! collapsed_values {
 /// What the github template renders in place of a collapsed values block
 pub const COLLAPSED_VALUES: &str = collapsed_values!();
 
+/// Starts with a hidden marker, so a caller can find and update the pull request comment holding the render
 pub const GITHUB_MARKDOWN_TEMPLATE: &str = concat!("
 {%- set plan_count = options.plan_count | default(value=data.plans | length) %}
-{%- set collapsed_outputs = options.collapsed_outputs | default(value=[]) %}
-{%- for plan_key, plan in data.plans %}
+{%- set collapsed_outputs = options.collapsed_outputs | default(value=[]) -%}
+<!-- tf-plan-format -->
+{% for plan_key, plan in data.plans %}
 {%- set plan_index = loop.index0 %}
 {%- if plan_index < plan_count %}
 {%- set changes = plan.changes | filter_actions(exclude=options.hidden_actions) %}

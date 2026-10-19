@@ -33,7 +33,9 @@ pub enum Commands {
         #[clap(short, long, help = "Template string")]
         template: String,
     },
-    #[command(about = "Render into Github markdown")]
+    #[command(
+        about = "Render into Github markdown, starting with a hidden <!-- tf-plan-format --> marker line"
+    )]
     Github {
         #[clap(
             short,
@@ -59,7 +61,7 @@ pub enum Commands {
         show_read: bool,
         #[clap(
             long,
-            help = "Maximum output length in bytes, the trailing newline not counted. Collapses the largest values blocks, then drops the last plans, and notes what was left out; if even the note does not fit, only the note is printed"
+            help = "Maximum output length in bytes, the trailing newline not counted. Collapses the largest values blocks, then drops the last plans, and notes what was left out; if even the marker and the note do not fit, only they are printed"
         )]
         max_length: Option<usize>,
     },
