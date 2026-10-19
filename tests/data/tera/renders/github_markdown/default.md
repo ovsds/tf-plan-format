@@ -122,6 +122,7 @@ output: "foo" -> (known after apply)
 added: null -> "added"
 changed: "before" -> "after"
 removed: "removed" -> null
+secret: sensitive -> sensitive (changed)
 unknown: "foo" -> (known after apply)
 ```
 
@@ -147,6 +148,7 @@ output: "foo" -> (known after apply)
 added: null -> "added"
 changed: "before" -> "after"
 removed: "removed" -> null
+secret: sensitive -> sensitive (changed)
 unknown: "foo" -> (known after apply)
 ```
 

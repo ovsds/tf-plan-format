@@ -28,6 +28,7 @@ pub enum Value {
     Object(ValueMap),
     Null,
     Sensitive,
+    SensitiveChanged,
     Unknown,
     SensitiveUnknown,
 }
@@ -331,6 +332,80 @@ fn mark_unknown_map(mut value_map: ValueMap, unknown: &BoolValue) -> ValueMap {
     value_map
 }
 
+// Masked on both sides, a changed secret would compare equal to its old value and be hidden as unchanged
+fn mark_sensitive_changes(
+    before: &Value,
+    after: Value,
+    unmasked_before: &Value,
+    unmasked_after: &Value,
+) -> Value {
+    match (before, after, unmasked_before, unmasked_after) {
+        (Value::Sensitive, Value::Sensitive, unmasked_before, unmasked_after)
+            if unmasked_before != unmasked_after =>
+        {
+            Value::SensitiveChanged
+        }
+        (
+            Value::Object(before),
+            Value::Object(after),
+            Value::Object(unmasked_before),
+            Value::Object(unmasked_after),
+        ) => Value::Object(mark_sensitive_changes_map(
+            before,
+            after,
+            unmasked_before,
+            unmasked_after,
+        )),
+        (
+            Value::Array(before),
+            Value::Array(after),
+            Value::Array(unmasked_before),
+            Value::Array(unmasked_after),
+        ) => Value::Array(
+            after
+                .into_iter()
+                .enumerate()
+                .map(|(index, after)| {
+                    match (
+                        before.get(index),
+                        unmasked_before.get(index),
+                        unmasked_after.get(index),
+                    ) {
+                        (Some(before), Some(unmasked_before), Some(unmasked_after)) => {
+                            mark_sensitive_changes(before, after, unmasked_before, unmasked_after)
+                        }
+                        _ => after,
+                    }
+                })
+                .collect(),
+        ),
+        (_, after, _, _) => after,
+    }
+}
+
+fn mark_sensitive_changes_map(
+    before: &ValueMap,
+    mut after: ValueMap,
+    unmasked_before: &ValueMap,
+    unmasked_after: &ValueMap,
+) -> ValueMap {
+    for (key, value) in &mut after {
+        if let (Some(before), Some(unmasked_before), Some(unmasked_after)) = (
+            before.get(key),
+            unmasked_before.get(key),
+            unmasked_after.get(key),
+        ) {
+            *value = mark_sensitive_changes(
+                before,
+                std::mem::replace(value, Value::Null),
+                unmasked_before,
+                unmasked_after,
+            );
+        }
+    }
+    after
+}
+
 impl Change {
     #[must_use]
     pub fn from_raw(raw: RawResourceChange) -> Self {
@@ -352,13 +427,21 @@ impl Change {
 
         let raw_before = raw.change.before.as_ref();
         let unmasked_before = raw_before.map(value_map_from_raw);
-        let before = unmasked_before.map(|before| mask_sensitive_map(before, before_sensitive));
+        let before = unmasked_before
+            .clone()
+            .map(|before| mask_sensitive_map(before, before_sensitive));
 
         let raw_after = raw.change.after.as_ref();
         let unmasked_after = raw_after.map(value_map_from_raw);
-        let after = unmasked_after.map(|after| {
+        let after = unmasked_after.clone().map(|after| {
             mask_sensitive_map(mark_unknown_map(after, after_unknown), after_sensitive)
         });
+        let after = match (&before, after, &unmasked_before, &unmasked_after) {
+            (Some(before), Some(after), Some(unmasked_before), Some(unmasked_after)) => Some(
+                mark_sensitive_changes_map(before, after, unmasked_before, unmasked_after),
+            ),
+            (_, after, _, _) => after,
+        };
 
         Change {
             address: raw.address.clone(),
@@ -427,14 +510,26 @@ impl Outputs {
                 .as_ref()
                 .unwrap_or(&BoolValue::Boolean(false));
 
-            if let Some(before) = &change.before {
-                let before = mask_sensitive(Value::from_raw(before), before_sensitive);
-                outputs.before.insert(name.clone(), before);
+            let unmasked_before = change.before.as_ref().map(Value::from_raw);
+            let before = unmasked_before
+                .clone()
+                .map(|before| mask_sensitive(before, before_sensitive));
+            if let Some(before) = &before {
+                outputs.before.insert(name.clone(), before.clone());
             }
             // An output that becomes unknown has no after value, only the flag
             if change.after.is_some() || has_unknown(after_unknown) {
-                let after = change.after.as_ref().map_or(Value::Null, Value::from_raw);
-                let after = mask_sensitive(mark_unknown(after, after_unknown), after_sensitive);
+                let unmasked_after = change.after.as_ref().map_or(Value::Null, Value::from_raw);
+                let after = mask_sensitive(
+                    mark_unknown(unmasked_after.clone(), after_unknown),
+                    after_sensitive,
+                );
+                let after = match (&before, &unmasked_before) {
+                    (Some(before), Some(unmasked_before)) => {
+                        mark_sensitive_changes(before, after, unmasked_before, &unmasked_after)
+                    }
+                    _ => after,
+                };
                 outputs.after.insert(name.clone(), after);
             }
             if !outputs.actions.contains(&action) {
@@ -1232,6 +1327,50 @@ pub mod tests {
                 expected_after.insert("not_sensitive".to_string(), Value::Unknown);
                 assert_eq!(change.after, Some(expected_after));
             }
+
+            #[test]
+            fn sensitive_changed() {
+                let mut before = RawValueMap::new();
+                before.insert("changed".to_string(), RawValue::String("a".to_string()));
+                before.insert("same".to_string(), RawValue::String("a".to_string()));
+                before.insert(
+                    "nested".to_string(),
+                    RawValue::Array(vec![RawValue::String("a".to_string())]),
+                );
+                let mut after = before.clone();
+                after.insert("changed".to_string(), RawValue::String("b".to_string()));
+                after.insert(
+                    "nested".to_string(),
+                    RawValue::Array(vec![RawValue::String("b".to_string())]),
+                );
+
+                let sensitive = bool_object(vec![
+                    ("changed", BoolValue::Boolean(true)),
+                    ("same", BoolValue::Boolean(true)),
+                    ("nested", BoolValue::Array(vec![BoolValue::Boolean(true)])),
+                ]);
+                let change = Change::from_raw(get_raw(
+                    Some(before),
+                    Some(after),
+                    Some(sensitive.clone()),
+                    Some(sensitive),
+                ));
+
+                let mut expected_before = ValueMap::new();
+                expected_before.insert("changed".to_string(), Value::Sensitive);
+                expected_before.insert("same".to_string(), Value::Sensitive);
+                expected_before.insert("nested".to_string(), Value::Array(vec![Value::Sensitive]));
+                assert_eq!(change.before, Some(expected_before));
+
+                let mut expected_after = ValueMap::new();
+                expected_after.insert("changed".to_string(), Value::SensitiveChanged);
+                expected_after.insert("same".to_string(), Value::Sensitive);
+                expected_after.insert(
+                    "nested".to_string(),
+                    Value::Array(vec![Value::SensitiveChanged]),
+                );
+                assert_eq!(change.after, Some(expected_after));
+            }
         }
     }
 
@@ -1529,7 +1668,7 @@ pub mod tests {
                 value_map(vec![
                     ("added", Value::String("added".to_string())),
                     ("changed", Value::String("after".to_string())),
-                    ("secret", Value::Sensitive),
+                    ("secret", Value::SensitiveChanged),
                     ("unknown", Value::Unknown),
                 ])
             );

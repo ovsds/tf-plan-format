@@ -124,7 +124,7 @@ triggers_replace: null
 added: null -> "added"
 changed: "before" -> "after"
 removed: "removed" -> null
-secret: sensitive
+secret: sensitive -> sensitive (changed)
 unknown: "foo" -> (known after apply)
 ```
 
@@ -152,7 +152,7 @@ triggers_replace: null
 added: null -> "added"
 changed: "before" -> "after"
 removed: "removed" -> null
-secret: sensitive
+secret: sensitive -> sensitive (changed)
 unknown: "foo" -> (known after apply)
 ```
 

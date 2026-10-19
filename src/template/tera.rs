@@ -107,6 +107,7 @@ fn tera_filter_actions(value: &tera::Value, args: &Args) -> tera::Result<tera::V
 fn render_plaintext(value: &tf::Value) -> String {
     match value {
         tf::Value::Sensitive => "sensitive".to_string(),
+        tf::Value::SensitiveChanged => "sensitive (changed)".to_string(),
         tf::Value::SensitiveUnknown => "sensitive (known after apply)".to_string(),
         tf::Value::Unknown => "(known after apply)".to_string(),
         tf::Value::String(value) => format!("{}", tera::to_value(value).unwrap()),
