@@ -336,31 +336,26 @@ fn mark_unknown_map(mut value_map: ValueMap, unknown: &BoolValue) -> ValueMap {
 fn mark_sensitive_changes(
     before: &Value,
     after: Value,
-    unmasked_before: &Value,
-    unmasked_after: &Value,
+    raw_before: &RawValue,
+    raw_after: &RawValue,
 ) -> Value {
-    match (before, after, unmasked_before, unmasked_after) {
-        (Value::Sensitive, Value::Sensitive, unmasked_before, unmasked_after)
-            if unmasked_before != unmasked_after =>
-        {
+    match (before, after, raw_before, raw_after) {
+        (Value::Sensitive, Value::Sensitive, raw_before, raw_after) if raw_before != raw_after => {
             Value::SensitiveChanged
         }
         (
             Value::Object(before),
             Value::Object(after),
-            Value::Object(unmasked_before),
-            Value::Object(unmasked_after),
+            RawValue::Object(raw_before),
+            RawValue::Object(raw_after),
         ) => Value::Object(mark_sensitive_changes_map(
-            before,
-            after,
-            unmasked_before,
-            unmasked_after,
+            before, after, raw_before, raw_after,
         )),
         (
             Value::Array(before),
             Value::Array(after),
-            Value::Array(unmasked_before),
-            Value::Array(unmasked_after),
+            RawValue::Array(raw_before),
+            RawValue::Array(raw_after),
         ) => Value::Array(
             after
                 .into_iter()
@@ -368,11 +363,11 @@ fn mark_sensitive_changes(
                 .map(|(index, after)| {
                     match (
                         before.get(index),
-                        unmasked_before.get(index),
-                        unmasked_after.get(index),
+                        raw_before.get(index),
+                        raw_after.get(index),
                     ) {
-                        (Some(before), Some(unmasked_before), Some(unmasked_after)) => {
-                            mark_sensitive_changes(before, after, unmasked_before, unmasked_after)
+                        (Some(before), Some(raw_before), Some(raw_after)) => {
+                            mark_sensitive_changes(before, after, raw_before, raw_after)
                         }
                         _ => after,
                     }
@@ -386,62 +381,60 @@ fn mark_sensitive_changes(
 fn mark_sensitive_changes_map(
     before: &ValueMap,
     mut after: ValueMap,
-    unmasked_before: &ValueMap,
-    unmasked_after: &ValueMap,
+    raw_before: &RawValueMap,
+    raw_after: &RawValueMap,
 ) -> ValueMap {
     for (key, value) in &mut after {
-        if let (Some(before), Some(unmasked_before), Some(unmasked_after)) = (
-            before.get(key),
-            unmasked_before.get(key),
-            unmasked_after.get(key),
-        ) {
+        if let (Some(before), Some(raw_before), Some(raw_after)) =
+            (before.get(key), raw_before.get(key), raw_after.get(key))
+        {
             *value = mark_sensitive_changes(
                 before,
                 std::mem::replace(value, Value::Null),
-                unmasked_before,
-                unmasked_after,
+                raw_before,
+                raw_after,
             );
         }
     }
     after
 }
 
+const NOT_FLAGGED: &BoolValue = &BoolValue::Boolean(false);
+
+fn values_from_raw(
+    raw_before: Option<&RawValueMap>,
+    raw_after: Option<&RawValueMap>,
+    before_sensitive: &BoolValue,
+    after_sensitive: &BoolValue,
+    after_unknown: &BoolValue,
+) -> (Option<ValueMap>, Option<ValueMap>) {
+    let before =
+        raw_before.map(|raw| mask_sensitive_map(value_map_from_raw(raw), before_sensitive));
+    let after = raw_after.map(|raw| {
+        mask_sensitive_map(
+            mark_unknown_map(value_map_from_raw(raw), after_unknown),
+            after_sensitive,
+        )
+    });
+    let after = match (&before, after, raw_before, raw_after) {
+        (Some(before), Some(after), Some(raw_before), Some(raw_after)) => Some(
+            mark_sensitive_changes_map(before, after, raw_before, raw_after),
+        ),
+        (_, after, _, _) => after,
+    };
+    (before, after)
+}
+
 impl Change {
     #[must_use]
     pub fn from_raw(raw: RawResourceChange) -> Self {
-        let before_sensitive = raw
-            .change
-            .before_sensitive
-            .as_ref()
-            .unwrap_or(&BoolValue::Boolean(false));
-        let after_sensitive = raw
-            .change
-            .after_sensitive
-            .as_ref()
-            .unwrap_or(&BoolValue::Boolean(false));
-        let after_unknown = raw
-            .change
-            .after_unknown
-            .as_ref()
-            .unwrap_or(&BoolValue::Boolean(false));
-
-        let raw_before = raw.change.before.as_ref();
-        let unmasked_before = raw_before.map(value_map_from_raw);
-        let before = unmasked_before
-            .clone()
-            .map(|before| mask_sensitive_map(before, before_sensitive));
-
-        let raw_after = raw.change.after.as_ref();
-        let unmasked_after = raw_after.map(value_map_from_raw);
-        let after = unmasked_after.clone().map(|after| {
-            mask_sensitive_map(mark_unknown_map(after, after_unknown), after_sensitive)
-        });
-        let after = match (&before, after, &unmasked_before, &unmasked_after) {
-            (Some(before), Some(after), Some(unmasked_before), Some(unmasked_after)) => Some(
-                mark_sensitive_changes_map(before, after, unmasked_before, unmasked_after),
-            ),
-            (_, after, _, _) => after,
-        };
+        let (before, after) = values_from_raw(
+            raw.change.before.as_ref(),
+            raw.change.after.as_ref(),
+            raw.change.before_sensitive.as_ref().unwrap_or(NOT_FLAGGED),
+            raw.change.after_sensitive.as_ref().unwrap_or(NOT_FLAGGED),
+            raw.change.after_unknown.as_ref().unwrap_or(NOT_FLAGGED),
+        );
 
         Change {
             address: raw.address.clone(),
@@ -489,55 +482,54 @@ pub struct Outputs {
 }
 
 impl Outputs {
+    /// Treats the outputs as one resource whose attributes are the changed outputs
     #[must_use]
     pub fn from_raw(raw: &std::collections::HashMap<String, RawOutputChange>) -> Self {
-        let mut outputs = Outputs::default();
+        let mut actions = Vec::new();
+        let mut raw_before = RawValueMap::new();
+        let mut raw_after = RawValueMap::new();
+        let mut before_sensitive = std::collections::HashMap::new();
+        let mut after_sensitive = std::collections::HashMap::new();
+        let mut after_unknown = std::collections::HashMap::new();
         for (name, change) in raw {
             let action = Action::from_actions(&change.actions);
             if action == Action::NoOp {
                 continue;
             }
-            let before_sensitive = change
-                .before_sensitive
-                .as_ref()
-                .unwrap_or(&BoolValue::Boolean(false));
-            let after_sensitive = change
-                .after_sensitive
-                .as_ref()
-                .unwrap_or(&BoolValue::Boolean(false));
-            let after_unknown = change
-                .after_unknown
-                .as_ref()
-                .unwrap_or(&BoolValue::Boolean(false));
-
-            let unmasked_before = change.before.as_ref().map(Value::from_raw);
-            let before = unmasked_before
-                .clone()
-                .map(|before| mask_sensitive(before, before_sensitive));
-            if let Some(before) = &before {
-                outputs.before.insert(name.clone(), before.clone());
+            actions.push(action);
+            for (raw, map) in [
+                (&change.before, &mut raw_before),
+                (&change.after, &mut raw_after),
+            ] {
+                if let Some(value) = raw {
+                    map.insert(name.clone(), value.clone());
+                }
             }
-            // An output that becomes unknown has no after value, only the flag
-            if change.after.is_some() || has_unknown(after_unknown) {
-                let unmasked_after = change.after.as_ref().map_or(Value::Null, Value::from_raw);
-                let after = mask_sensitive(
-                    mark_unknown(unmasked_after.clone(), after_unknown),
-                    after_sensitive,
-                );
-                let after = match (&before, &unmasked_before) {
-                    (Some(before), Some(unmasked_before)) => {
-                        mark_sensitive_changes(before, after, unmasked_before, &unmasked_after)
-                    }
-                    _ => after,
-                };
-                outputs.after.insert(name.clone(), after);
-            }
-            if !outputs.actions.contains(&action) {
-                outputs.actions.push(action);
+            for (flag, map) in [
+                (&change.before_sensitive, &mut before_sensitive),
+                (&change.after_sensitive, &mut after_sensitive),
+                (&change.after_unknown, &mut after_unknown),
+            ] {
+                if let Some(flag) = flag {
+                    map.insert(name.clone(), flag.clone());
+                }
             }
         }
-        outputs.actions.sort();
-        outputs
+        actions.sort();
+        actions.dedup();
+
+        let (before, after) = values_from_raw(
+            Some(&raw_before),
+            Some(&raw_after),
+            &BoolValue::Object(before_sensitive),
+            &BoolValue::Object(after_sensitive),
+            &BoolValue::Object(after_unknown),
+        );
+        Outputs {
+            before: before.unwrap_or_default(),
+            after: after.unwrap_or_default(),
+            actions,
+        }
     }
 }
 
