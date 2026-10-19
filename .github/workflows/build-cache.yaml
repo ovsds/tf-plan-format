@@ -9,7 +9,6 @@ on:
       - Cargo.toml
       - Cargo.lock
       - build/**
-      - Taskfile.yaml
       - mise.toml
       - .github/actions/**
       - .github/workflows/build-cache.yaml
@@ -35,13 +34,13 @@ jobs:
         uses: $/.github/actions/setup_environment
 
       - name: Configure Docker Builder
-        run: task build:configure-builder
+        run: mise run configure-builder
 
       - name: Expose GitHub Runtime
         uses: crazy-max/ghaction-github-runtime@04d248b84655b509d8c44dc1d6f990c879747487 # v4.0.0
 
       - name: Build binaries and images
-        run: task build:all -- --set image.output=type=cacheonly
+        run: mise run //build:all --set image.output=type=cacheonly
         env:
           IMAGE_TAG: ${{ github.event.repository.name }}:cache
           GHA_CACHE: true

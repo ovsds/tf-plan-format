@@ -1,0 +1,51 @@
+[tasks.init]
+description = "Initialize build environment"
+
+[tasks.lint]
+description = "Lint build"
+
+[tasks.lint-fix]
+description = "Lint fix build"
+
+[tasks.test]
+description = "Test build"
+
+[tasks.clean]
+description = "Clean binaries and archives"
+run = "rm -rf bin dist"
+
+[tasks.dependencies-update]
+description = "Update build dependencies"
+
+[tasks.dependencies-check]
+description = "Check build dependencies"
+
+[tasks.all]
+description = "Build all targets, arguments go to docker buildx bake"
+run = "docker buildx bake --allow=fs.read=.."
+
+[tasks.binaries]
+description = "Build binaries for all platforms"
+run = ["echo 'Building project for all platforms...'", "docker buildx bake --allow=fs.read=.. bin"]
+
+[tasks.image]
+description = "Build docker image, tagged IMAGE_TAG or tf-plan-format:test"
+run = [
+  "echo 'Building docker image...'",
+  'IMAGE_TAG="${IMAGE_TAG:-tf-plan-format:test}" docker buildx bake --allow=fs.read=.. image',
+]
+
+[tasks.image-local]
+description = "Build docker image for the local platform, tagged IMAGE_TAG or tf-plan-format:test"
+run = [
+  "echo 'Building docker image locally...'",
+  'IMAGE_TAG="${IMAGE_TAG:-tf-plan-format:test}" docker buildx bake --allow=fs.read=.. image-local',
+]
+
+[tasks.upload]
+description = "Upload packaged archives and checksums to the VERSION GitHub release"
+dir = "{{config_root}}/dist"
+run = [
+  "echo 'Uploading release assets...'",
+  'gh release upload "${VERSION:?}" *.tar.gz checksums.txt --clobber',
+]
