@@ -217,8 +217,7 @@ jobs:
           tofu init -input=false
           tofu plan -input=false -out="$RUNNER_TEMP/infra/plan.tfplan"
           tofu show -json "$RUNNER_TEMP/infra/plan.tfplan" > "$RUNNER_TEMP/infra/plan.json"
-          printf '## Plan\n' > "$RUNNER_TEMP/plan.md"
-          tf_plan_format github --file "$RUNNER_TEMP/infra/plan.json" --max-length 65000 >> "$RUNNER_TEMP/plan.md"
+          tf_plan_format github --file "$RUNNER_TEMP/infra/plan.json" --max-length 65000 > "$RUNNER_TEMP/plan.md"
 
       - uses: ovsds/create-or-update-unique-comment-action@df30f5f96aa71679deb9eb697c98f39ee9e26651 # v1.1.0
         with:
