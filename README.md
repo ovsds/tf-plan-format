@@ -250,8 +250,10 @@ The repository is generated from [template-repository](https://github.com/ovsds/
 
 - `mise.toml` - the Rust, Terraform and OpenTofu tools, the cargo steps in `lint`, `lint-fix`, `test`, `clean` and
   `dependencies-update`.
-- `.github/workflows/release.yaml`, `release-pr.yaml` - binaries and release archives besides the image, built through
-  `build` tasks instead of `ci-image-push`.
+- `.github/workflows/release.yaml` - binaries and release archives besides the image, built through `build` tasks
+  instead of `ci-image-push`: the version check, a concurrency group per release tag, packaging and upload.
+- `.github/workflows/release-pr.yaml` - beta binaries besides the image, built through `build` tasks; runs only on
+  `paths` that change the build; the image is `ghcr.io/<owner>/<repo>-beta:<PR>-<head sha>`.
 - `.github/workflows/check-pr.yaml` - runs on `main` too, with Rust cache and coverage.
 - `.github/workflows/release-pr-cleanup.yaml`, `release-scan.yaml` - `${{ github.workflow }}` concurrency group, not the
   template's `$${{ github.workflow }}`.
