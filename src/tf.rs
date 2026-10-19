@@ -27,6 +27,8 @@ pub enum Value {
     Object(ValueMap),
     Null,
     Sensitive,
+    Unknown,
+    SensitiveUnknown,
 }
 
 impl Value {
@@ -152,7 +154,7 @@ pub struct RawResourceChangeChange {
     pub actions: Vec<RawResourceChangeChangeAction>,
     pub before: Option<RawValueMap>,
     pub after: Option<RawValueMap>,
-    // after_unknown
+    pub after_unknown: Option<BoolValue>,
     pub before_sensitive: Option<BoolValue>,
     pub after_sensitive: Option<BoolValue>,
 }
@@ -211,18 +213,18 @@ pub struct Change {
     pub raw: RawResourceChange,
 }
 
-fn get_child_sensitive(sensitive: &BoolValue, key: &str) -> BoolValue {
-    match sensitive {
+fn get_child_flag(flag: &BoolValue, key: &str) -> BoolValue {
+    match flag {
         BoolValue::Object(map) => match map.get(key) {
             Some(value) => value.clone(),
             None => BoolValue::Boolean(false),
         },
-        _ => BoolValue::Boolean(is_sensitive(sensitive)),
+        _ => BoolValue::Boolean(is_flagged(flag)),
     }
 }
 
-fn is_sensitive(sensitive: &BoolValue) -> bool {
-    match sensitive {
+fn is_flagged(flag: &BoolValue) -> bool {
+    match flag {
         BoolValue::Boolean(value) => *value,
         _ => false,
     }
@@ -234,13 +236,9 @@ fn mask_sensitive(value: Value, sensitive: &BoolValue) -> Value {
         (Value::Array(value_array), BoolValue::Array(sensitive_array)) => {
             Value::Array(mask_sensitive_array(value_array, sensitive_array))
         }
-        _ => {
-            if is_sensitive(sensitive) {
-                Value::Sensitive
-            } else {
-                value
-            }
-        }
+        (Value::Unknown, _) if is_flagged(sensitive) => Value::SensitiveUnknown,
+        _ if is_flagged(sensitive) => Value::Sensitive,
+        _ => value,
     }
 }
 
@@ -256,7 +254,67 @@ fn mask_sensitive_array(mut value_array: Vec<Value>, sensitive_array: &[BoolValu
 
 fn mask_sensitive_map(mut value_map: ValueMap, sensitive: &BoolValue) -> ValueMap {
     for (key, value) in &mut value_map {
-        *value = mask_sensitive(value.clone(), &get_child_sensitive(sensitive, key));
+        *value = mask_sensitive(value.clone(), &get_child_flag(sensitive, key));
+    }
+    value_map
+}
+
+fn has_unknown(unknown: &BoolValue) -> bool {
+    match unknown {
+        BoolValue::Boolean(value) => *value,
+        BoolValue::Array(array) => array.iter().any(has_unknown),
+        BoolValue::Object(map) => map.values().any(has_unknown),
+        BoolValue::Null => false,
+    }
+}
+
+fn mark_unknown(value: Value, unknown: &BoolValue) -> Value {
+    match (value, unknown) {
+        (_, BoolValue::Boolean(true)) => Value::Unknown,
+        (Value::Object(value_map), _) => Value::Object(mark_unknown_map(value_map, unknown)),
+        (Value::Array(value_array), BoolValue::Array(unknown_array)) => {
+            Value::Array(mark_unknown_array(value_array, unknown_array))
+        }
+        // Unknown parts of an absent or null value exist only in the flags
+        (Value::Null, BoolValue::Object(_)) if has_unknown(unknown) => {
+            Value::Object(mark_unknown_map(ValueMap::new(), unknown))
+        }
+        (Value::Null, BoolValue::Array(unknown_array)) if has_unknown(unknown) => {
+            Value::Array(mark_unknown_array(Vec::new(), unknown_array))
+        }
+        (value, _) => value,
+    }
+}
+
+fn mark_unknown_array(value_array: Vec<Value>, unknown_array: &[BoolValue]) -> Vec<Value> {
+    let length = unknown_array
+        .iter()
+        .rposition(has_unknown)
+        .map_or(0, |index| index + 1)
+        .max(value_array.len());
+    let mut values = value_array.into_iter();
+    (0..length)
+        .map(|index| {
+            let value = values.next().unwrap_or(Value::Null);
+            let unknown = unknown_array
+                .get(index)
+                .unwrap_or(&BoolValue::Boolean(false));
+            mark_unknown(value, unknown)
+        })
+        .collect()
+}
+
+fn mark_unknown_map(mut value_map: ValueMap, unknown: &BoolValue) -> ValueMap {
+    let BoolValue::Object(unknown_map) = unknown else {
+        return value_map;
+    };
+    for (key, child_unknown) in unknown_map {
+        let marked = match value_map.remove(key) {
+            Some(value) => mark_unknown(value, child_unknown),
+            None if has_unknown(child_unknown) => mark_unknown(Value::Null, child_unknown),
+            None => continue,
+        };
+        value_map.insert(key.clone(), marked);
     }
     value_map
 }
@@ -274,6 +332,11 @@ impl Change {
             .after_sensitive
             .as_ref()
             .unwrap_or(&BoolValue::Boolean(false));
+        let after_unknown = raw
+            .change
+            .after_unknown
+            .as_ref()
+            .unwrap_or(&BoolValue::Boolean(false));
 
         let raw_before = raw.change.before.as_ref();
         let unmasked_before = raw_before.map(value_map_from_raw);
@@ -281,7 +344,9 @@ impl Change {
 
         let raw_after = raw.change.after.as_ref();
         let unmasked_after = raw_after.map(value_map_from_raw);
-        let after = unmasked_after.map(|after| mask_sensitive_map(after, after_sensitive));
+        let after = unmasked_after.map(|after| {
+            mask_sensitive_map(mark_unknown_map(after, after_unknown), after_sensitive)
+        });
 
         Change {
             address: raw.address.clone(),
@@ -596,6 +661,7 @@ pub mod tests {
                         actions: vec![RawResourceChangeChangeAction::Create],
                         before,
                         after,
+                        after_unknown: None,
                         before_sensitive,
                         after_sensitive,
                     },
@@ -803,6 +869,234 @@ pub mod tests {
                 );
                 assert_eq!(change.before, Some(expected_before));
             }
+
+            fn get_raw_unknown(
+                after: RawValueMap,
+                after_unknown: BoolValue,
+                after_sensitive: Option<BoolValue>,
+            ) -> RawResourceChange {
+                let mut raw = get_raw(None, Some(after), None, after_sensitive);
+                raw.change.after_unknown = Some(after_unknown);
+                raw
+            }
+
+            fn bool_object(entries: Vec<(&str, BoolValue)>) -> BoolValue {
+                BoolValue::Object(
+                    entries
+                        .into_iter()
+                        .map(|(key, value)| (key.to_string(), value))
+                        .collect(),
+                )
+            }
+
+            #[test]
+            fn unknown_after_key_true() {
+                let mut after = RawValueMap::new();
+                after.insert("key".to_string(), RawValue::Null);
+                after.insert("known".to_string(), RawValue::String("value".to_string()));
+
+                let unknown = bool_object(vec![
+                    ("key", BoolValue::Boolean(true)),
+                    ("known", BoolValue::Boolean(false)),
+                ]);
+                let change = Change::from_raw(get_raw_unknown(after, unknown, None));
+
+                let mut expected_after = ValueMap::new();
+                expected_after.insert("key".to_string(), Value::Unknown);
+                expected_after.insert("known".to_string(), Value::String("value".to_string()));
+                assert_eq!(change.after, Some(expected_after));
+            }
+
+            #[test]
+            fn unknown_after_absent_key() {
+                let unknown = bool_object(vec![
+                    ("absent_true", BoolValue::Boolean(true)),
+                    ("absent_false", BoolValue::Boolean(false)),
+                    ("absent_object", bool_object(vec![])),
+                ]);
+                let change = Change::from_raw(get_raw_unknown(RawValueMap::new(), unknown, None));
+
+                let mut expected_after = ValueMap::new();
+                expected_after.insert("absent_true".to_string(), Value::Unknown);
+                assert_eq!(change.after, Some(expected_after));
+            }
+
+            #[test]
+            fn unknown_after_absent_nested() {
+                let mut after = RawValueMap::new();
+                after.insert("null_object".to_string(), RawValue::Null);
+                let unknown = bool_object(vec![
+                    (
+                        "absent_array",
+                        BoolValue::Array(vec![bool_object(vec![("id", BoolValue::Boolean(true))])]),
+                    ),
+                    (
+                        "null_object",
+                        bool_object(vec![("id", BoolValue::Boolean(true))]),
+                    ),
+                    (
+                        "absent_known",
+                        BoolValue::Array(vec![bool_object(vec![(
+                            "id",
+                            BoolValue::Boolean(false),
+                        )])]),
+                    ),
+                ]);
+                let change = Change::from_raw(get_raw_unknown(after, unknown, None));
+
+                let mut expected_id = ValueMap::new();
+                expected_id.insert("id".to_string(), Value::Unknown);
+                let mut expected_after = ValueMap::new();
+                expected_after.insert(
+                    "absent_array".to_string(),
+                    Value::Array(vec![Value::Object(expected_id.clone())]),
+                );
+                expected_after.insert("null_object".to_string(), Value::Object(expected_id));
+                assert_eq!(change.after, Some(expected_after));
+            }
+
+            #[test]
+            fn unknown_after_array_longer_flags() {
+                let mut after = RawValueMap::new();
+                after.insert("key".to_string(), RawValue::Array(vec![]));
+
+                let unknown = bool_object(vec![(
+                    "key",
+                    BoolValue::Array(vec![BoolValue::Boolean(true), BoolValue::Boolean(false)]),
+                )]);
+                let change = Change::from_raw(get_raw_unknown(after, unknown, None));
+
+                let mut expected_after = ValueMap::new();
+                expected_after.insert("key".to_string(), Value::Array(vec![Value::Unknown]));
+                assert_eq!(change.after, Some(expected_after));
+            }
+
+            #[test]
+            fn unknown_after_map() {
+                let mut inner = RawValueMap::new();
+                inner.insert("known".to_string(), RawValue::String("value".to_string()));
+                let mut after = RawValueMap::new();
+                after.insert("key".to_string(), RawValue::Object(inner));
+
+                let unknown = bool_object(vec![(
+                    "key",
+                    bool_object(vec![("absent", BoolValue::Boolean(true))]),
+                )]);
+                let change = Change::from_raw(get_raw_unknown(after, unknown, None));
+
+                let mut expected_inner = ValueMap::new();
+                expected_inner.insert("known".to_string(), Value::String("value".to_string()));
+                expected_inner.insert("absent".to_string(), Value::Unknown);
+                let mut expected_after = ValueMap::new();
+                expected_after.insert("key".to_string(), Value::Object(expected_inner));
+                assert_eq!(change.after, Some(expected_after));
+            }
+
+            #[test]
+            fn unknown_after_whole_map() {
+                let mut inner = RawValueMap::new();
+                inner.insert("known".to_string(), RawValue::String("value".to_string()));
+                let mut after = RawValueMap::new();
+                after.insert("key".to_string(), RawValue::Object(inner));
+
+                let unknown = bool_object(vec![("key", BoolValue::Boolean(true))]);
+                let change = Change::from_raw(get_raw_unknown(after, unknown, None));
+
+                let mut expected_after = ValueMap::new();
+                expected_after.insert("key".to_string(), Value::Unknown);
+                assert_eq!(change.after, Some(expected_after));
+            }
+
+            #[test]
+            fn unknown_after_array() {
+                let mut after = RawValueMap::new();
+                after.insert(
+                    "key".to_string(),
+                    RawValue::Array(vec![
+                        RawValue::Null,
+                        RawValue::String("false".to_string()),
+                        RawValue::String("null".to_string()),
+                        RawValue::String("absent".to_string()),
+                    ]),
+                );
+
+                let unknown = bool_object(vec![(
+                    "key",
+                    BoolValue::Array(vec![
+                        BoolValue::Boolean(true),
+                        BoolValue::Boolean(false),
+                        BoolValue::Null,
+                    ]),
+                )]);
+                let change = Change::from_raw(get_raw_unknown(after, unknown, None));
+
+                let mut expected_after = ValueMap::new();
+                expected_after.insert(
+                    "key".to_string(),
+                    Value::Array(vec![
+                        Value::Unknown,
+                        Value::String("false".to_string()),
+                        Value::String("null".to_string()),
+                        Value::String("absent".to_string()),
+                    ]),
+                );
+                assert_eq!(change.after, Some(expected_after));
+            }
+
+            #[test]
+            fn unknown_after_not_object() {
+                let mut after = RawValueMap::new();
+                after.insert("key".to_string(), RawValue::String("value".to_string()));
+
+                let change = Change::from_raw(get_raw_unknown(
+                    after.clone(),
+                    BoolValue::Boolean(false),
+                    None,
+                ));
+
+                let mut expected_after = ValueMap::new();
+                expected_after.insert("key".to_string(), Value::String("value".to_string()));
+                assert_eq!(change.after, Some(expected_after));
+            }
+
+            #[test]
+            fn unknown_after_sensitive() {
+                let mut after = RawValueMap::new();
+                after.insert("present".to_string(), RawValue::Null);
+
+                let unknown = bool_object(vec![
+                    ("present", BoolValue::Boolean(true)),
+                    ("absent", BoolValue::Boolean(true)),
+                    ("not_sensitive", BoolValue::Boolean(true)),
+                ]);
+                let sensitive = bool_object(vec![
+                    ("present", BoolValue::Boolean(true)),
+                    ("absent", BoolValue::Boolean(true)),
+                ]);
+                let change = Change::from_raw(get_raw_unknown(after, unknown, Some(sensitive)));
+
+                let mut expected_after = ValueMap::new();
+                expected_after.insert("present".to_string(), Value::SensitiveUnknown);
+                expected_after.insert("absent".to_string(), Value::SensitiveUnknown);
+                expected_after.insert("not_sensitive".to_string(), Value::Unknown);
+                assert_eq!(change.after, Some(expected_after));
+            }
+        }
+    }
+
+    mod value {
+        use super::*;
+
+        #[test]
+        fn serialize_unknown() {
+            assert_eq!(
+                serde_json::to_string(&Value::Unknown).unwrap(),
+                r#"{"op":"Unknown"}"#
+            );
+            assert_eq!(
+                serde_json::to_string(&Value::SensitiveUnknown).unwrap(),
+                r#"{"op":"SensitiveUnknown"}"#
+            );
         }
     }
 
