@@ -1,0 +1,5 @@
+#!/usr/bin/env bash
+#MISE description="Open coverage report in browser"
+set -euo pipefail
+
+cargo llvm-cov --open

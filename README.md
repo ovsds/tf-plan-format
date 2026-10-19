@@ -239,9 +239,24 @@ jobs:
 
 All other tools are pinned in [mise.toml](mise.toml).
 
-### Taskfile commands
+### mise tasks
 
-For all commands see [Taskfile](Taskfile.yaml) or `task --list-all`.
+For all commands see [mise.toml](mise.toml), [mise-tasks](mise-tasks), [build](build) or `mise tasks ls --all`.
+
+### Template
+
+The repository is generated from [template-repository](https://github.com/ovsds/template-repository);
+`mise run update-from-template` re-applies it. Keep these local changes when merging its output:
+
+- `mise.toml` - the Rust, Terraform and OpenTofu tools, the cargo steps in `lint`, `lint-fix`, `test`, `clean` and
+  `dependencies-update`.
+- `.github/workflows/release.yaml`, `release-pr.yaml` - binaries and release archives besides the image, built through
+  `build` tasks instead of `ci-image-push`.
+- `.github/workflows/check-pr.yaml` - runs on `main` too, with Rust cache and coverage.
+- `.github/workflows/release-pr-cleanup.yaml`, `release-scan.yaml` - `${{ github.workflow }}` concurrency group, not the
+  template's `$${{ github.workflow }}`.
+- `.editorconfig`, `.gitignore` - the Rust sections.
+- `README.md` - this one.
 
 ## License
 

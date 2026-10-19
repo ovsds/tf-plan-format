@@ -11,8 +11,9 @@ on:
       - Cargo.toml
       - Cargo.lock
       - build/**
-      - Taskfile.yaml
       - mise.toml
+      - mise-tasks/ci-image-scan
+      - trivy.yaml
       - .github/actions/**
       - .github/workflows/release-pr.yaml
 
@@ -39,7 +40,7 @@ jobs:
         uses: $/.github/actions/setup_environment
 
       - name: Configure Docker Builder
-        run: task build:configure-builder
+        run: mise run configure-builder
 
       - name: Login to GitHub Container Registry
         uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3.7.0
@@ -48,21 +49,51 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Get Image Tag
-        id: get-image-tag
+      - name: Get Image Data
+        id: get-image-data
         env:
-          IMAGE_NAME: ghcr.io/${{ github.repository_owner }}/${{ github.event.repository.name }}-beta
+          IMAGE_REGISTRY: ghcr.io/${{ github.repository_owner }}
+          IMAGE_NAME: ${{ github.event.repository.name }}-beta
           IMAGE_VERSION: ${{ github.event.number }}-${{ github.event.pull_request.head.sha }}
-        run: echo "image-tag=${IMAGE_NAME}:${IMAGE_VERSION}" >> "$GITHUB_OUTPUT"
+        run: |
+          {
+            echo "registry=${IMAGE_REGISTRY}"
+            echo "name=${IMAGE_NAME}"
+            echo "tag=${IMAGE_VERSION}"
+            echo "image-tag=${IMAGE_REGISTRY}/${IMAGE_NAME}:${IMAGE_VERSION}"
+          } >> "$GITHUB_OUTPUT"
 
       - name: Expose GitHub Runtime
         uses: crazy-max/ghaction-github-runtime@04d248b84655b509d8c44dc1d6f990c879747487 # v4.0.0
 
       - name: Build binaries and images
-        run: task build:all
+        run: mise run //build:all
         env:
-          IMAGE_TAG: ${{ steps.get-image-tag.outputs.image-tag }}
+          IMAGE_TAG: ${{ steps.get-image-data.outputs.image-tag }}
           GHA_CACHE: true
+
+      - name: Scan image
+        id: scan
+        uses: ovsds/run-with-output-action@9bc0dcb1df5b70d1704c709f9cc0f40d260a5f40 # v1.4.0
+        continue-on-error: true
+        with:
+          run: |
+            IMAGE_REGISTRY="${{ steps.get-image-data.outputs.registry }}" \
+            IMAGE_NAME="${{ steps.get-image-data.outputs.name }}" \
+            IMAGE_TAG="${{ steps.get-image-data.outputs.tag }}" \
+            mise run ci-image-scan
+
+      - name: Report vulnerabilities
+        uses: ovsds/create-or-update-unique-comment-action@df30f5f96aa71679deb9eb697c98f39ee9e26651 # v1.1.0
+        with:
+          issue-number: ${{ github.event.number }}
+          body: |
+            ## Vulnerabilities found
+            ```
+            ${{ steps.scan.outputs.stdout }}
+            ```
+          unique-body-includes: "## Vulnerabilities found"
+          delete: ${{ steps.scan.outputs.exit_code == 0 }}
 
       - name: Release binaries
         id: release-binaries
@@ -78,6 +109,6 @@ jobs:
           body: |
             Build Artifacts:
               - Binaries: [download](${{ steps.release-binaries.outputs.artifact-url }})
-              - Image Tag: `${{ steps.get-image-tag.outputs.image-tag }}`
+              - Image Tag: `${{ steps.get-image-data.outputs.image-tag }}`
           unique-body-includes: |
             Build Artifacts:

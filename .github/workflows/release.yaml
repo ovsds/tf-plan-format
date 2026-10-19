@@ -30,10 +30,10 @@ jobs:
         uses: $/.github/actions/setup_environment
 
       - name: Check version
-        run: task build:check-version
+        run: mise run //build:check-version
 
       - name: Configure Docker Builder
-        run: task build:configure-builder
+        run: mise run configure-builder
 
       - name: Login to GitHub Container Registry
         uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3.7.0
@@ -46,13 +46,13 @@ jobs:
         uses: crazy-max/ghaction-github-runtime@04d248b84655b509d8c44dc1d6f990c879747487 # v4.0.0
 
       - name: Build binaries and images
-        run: task build:all
+        run: mise run //build:all
         env:
           IMAGE_TAG: ghcr.io/${{ github.repository_owner }}/${{ github.event.repository.name }}:${{ github.event.release.tag_name }}
           GHA_CACHE: true
 
       - name: Package binaries
-        run: task build:package
+        run: mise run //build:package
 
       - name: Store archives
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
@@ -84,7 +84,7 @@ jobs:
           path: build/dist
 
       - name: Upload release assets
-        run: task build:upload
+        run: mise run //build:upload
         env:
           VERSION: ${{ github.event.release.tag_name }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -1,8 +1,170 @@
+# monorepo config roots and `//<root>:<task>` references need a recent mise
+min_version = "2026.10.3"
+
+monorepo_root = true
+
+[monorepo]
+config_roots = ["build"]
+
 [tools]
-task = "3.54.0"
 node = "24.22.0"
+trivy = "0.76.0"
 zizmor = "1.31.1"
+gitleaks = "8.30.1"
 terraform = "1.7.5"
 opentofu = "1.13.1"
 "github:taiki-e/cargo-llvm-cov" = "0.9.1"
 rust = { version = "1.99.1", profile = "minimal", components = "clippy,rustfmt,llvm-tools" }
+
+[env]
+_.path = ["node_modules/.bin"]
+
+[settings]
+task.quiet = true
+
+[tasks.init]
+description = "Initialize project environment"
+run = [
+  "echo 'Installing mise tools...'",
+  "mise install",
+
+  "echo 'Installing node dependencies...'",
+  "npm install",
+
+  "echo 'Installing husky pre-commit...'",
+  "npm run prepare",
+
+  { task = "//build:init" },
+]
+
+[tasks.lint]
+description = "Lint project"
+run = [
+  "echo 'Running prettier checks...'",
+  "prettier --check .",
+
+  "echo 'Running cargo checks...'",
+  "cargo check",
+  "cargo fmt -- --check",
+  "cargo clippy",
+
+  "echo 'Running compile checks...'",
+  "cargo rustc",
+
+  { task = "//build:lint" },
+
+  "echo 'Running GHA checks...'",
+  'GH_TOKEN="$(gh auth token)" zizmor .',
+
+  "echo 'Running secret scan...'",
+  "gitleaks git --log-opts=HEAD --redact --no-banner",
+]
+
+[tasks.lint-fix]
+description = "Lint fix project"
+run = [
+  "echo 'Running prettier fixes...'",
+  "prettier --write .",
+
+  "echo 'Running cargo fixes...'",
+  "cargo check",
+  "cargo fmt",
+  "cargo clippy",
+
+  "echo 'Running compile fixes...'",
+  "cargo fix --allow-staged --allow-dirty",
+
+  { task = "//build:lint-fix" },
+
+  "echo 'Running GHA checks...'",
+  'GH_TOKEN="$(gh auth token)" zizmor .',
+
+  "echo 'Running secret scan...'",
+  "gitleaks git --log-opts=HEAD --redact --no-banner",
+]
+
+[tasks.test]
+description = "Test project; arguments filter tests by name, e.g. `mise run test github`"
+run = [
+  "echo 'Running tests...'",
+
+  { task = "//build:test" },
+
+  # last, so `mise run test <args>` passes the args to it
+  "cargo test -- --nocapture",
+]
+
+[tasks.clean]
+description = "Clean project environment"
+run = [
+  "echo 'Cleaning node dependencies...'",
+  "rm -rf node_modules",
+
+  "echo 'Cleaning cargo cache...'",
+  "cargo clean",
+
+  { task = "//build:clean" },
+]
+
+[tasks.dependencies-update]
+description = "Update dependencies"
+run = [
+  "echo 'Updating mise tools...'",
+  "mise upgrade --bump",
+
+  "echo 'Updating node dependencies...'",
+  "npm update",
+
+  "echo 'Updating cargo dependencies...'",
+  "cargo update",
+
+  { task = "//build:dependencies-update" },
+]
+
+[tasks.dependencies-check]
+description = "Check dependencies"
+run = [
+  "echo 'Checking mise tools...'",
+  "mise outdated",
+
+  "echo 'Checking node dependencies...'",
+  "npm outdated",
+  "npm audit",
+
+  { task = "//build:dependencies-check" },
+]
+
+[tasks.update-from-template]
+description = "Update project from template; TEMPLATE_PATH=<path> in the environment overrides the source"
+run = [
+  "echo 'Updating project from template...'",
+  '''
+  cookiecutter \
+    --no-input \
+    --overwrite-if-exists \
+    --output-dir ../ \
+    "${TEMPLATE_PATH:-https://github.com/ovsds/template-repository}" \
+    project_name='Terraform Plan Format' \
+    project_slug='tf-plan-format' \
+    node_version='v24.22.0' \
+    github_workflow_runs_on='ubuntu-latest' \
+    owner_name='Dmitry Ovsiannikov' \
+    owner_github_login='ovsds' \
+    scripts='false' \
+    services='build' \
+    with_python='false' \
+    with_cookiecutter='false' \
+    with_trivy='true' \
+    with_zizmor='true' \
+    with_gitleaks='true' \
+    with_docker='false' \
+    with_build='true'
+  ''',
+]
+
+[tasks.configure-builder]
+description = "Configure buildx for multi-arch builds"
+run = [
+  "echo 'Configuring buildx...'",
+  "docker buildx create --driver docker-container --use",
+]

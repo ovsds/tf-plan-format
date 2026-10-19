@@ -1,0 +1,9 @@
+#!/usr/bin/env bash
+#MISE description="Check that VERSION matches the Cargo.toml package version"
+set -euo pipefail
+
+cargo_version="$(cargo metadata --no-deps --format-version 1 --manifest-path ../Cargo.toml | jq -r '.packages[0].version')"
+if [ "${VERSION:?}" != "${cargo_version}" ]; then
+  echo "Version ${VERSION} differs from Cargo.toml version ${cargo_version}" >&2
+  exit 1
+fi

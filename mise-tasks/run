@@ -1,0 +1,6 @@
+#!/usr/bin/env bash
+#MISE description="Run the CLI, arguments go to it"
+set -euo pipefail
+
+echo 'Running project...'
+cargo run -- "$@"

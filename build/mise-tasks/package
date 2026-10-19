@@ -1,0 +1,12 @@
+#!/usr/bin/env bash
+#MISE description="Package built binaries into VERSION release archives with a checksums file"
+set -euo pipefail
+
+: "${VERSION:?}"
+echo 'Packaging binaries...'
+rm -rf dist
+mkdir dist
+for platform in linux-amd64 linux-arm64 darwin-amd64 darwin-arm64; do
+  tar -czf "dist/tf_plan_format-${VERSION}-${platform}.tar.gz" -C "bin/${platform}" tf_plan_format
+done
+cd dist && shasum -a 256 -- *.tar.gz > checksums.txt

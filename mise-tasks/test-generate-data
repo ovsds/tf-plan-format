@@ -1,0 +1,22 @@
+#!/usr/bin/env bash
+#MISE description="Generate terraform and opentofu plans for each tests/data/plans directory with initial and target folders, skipping existing ones"
+set -euo pipefail
+
+generate() {
+  local dir="$1" tool="$2" cli="$3"
+  if [ -s "${dir}/${tool}.tfplan.json" ]; then
+    return
+  fi
+  "${cli}" -chdir="${dir}/initial" init
+  "${cli}" -chdir="${dir}/initial" apply -state-out="../${tool}.tfstate" -auto-approve
+  "${cli}" -chdir="${dir}/target" init
+  "${cli}" -chdir="${dir}/target" plan -state="../${tool}.tfstate" -out="../${tool}.tfplan"
+  "${cli}" -chdir="${dir}/target" show -json "../${tool}.tfplan" | jq > "${dir}/${tool}.tfplan.json"
+}
+
+echo 'Generating test data...'
+# artificial plans are written by hand
+find tests/data/plans -mindepth 1 -maxdepth 1 -type d ! -name artificial | while read -r dir; do
+  generate "${dir}" terraform terraform
+  generate "${dir}" opentofu tofu
+done
