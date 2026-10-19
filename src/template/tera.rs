@@ -8,6 +8,7 @@ use core::str;
 use std::collections::HashSet;
 
 const INDENT_STR: &str = "  ";
+const MAX_ARRAY_DIFF_CELLS: usize = 4_000_000;
 
 pub const GITHUB_MARKDOWN_TEMPLATE: &str = "
 {%- for plan_key, plan in data.plans %}<details>
@@ -187,6 +188,195 @@ fn render_changed_hashmap(
     result
 }
 
+enum ArrayChange<'a> {
+    Same(&'a tf::Value),
+    Changed(&'a tf::Value, &'a tf::Value),
+}
+
+fn diff_arrays<'a>(before: &'a [tf::Value], after: &'a [tf::Value]) -> Vec<ArrayChange<'a>> {
+    let prefix = before
+        .iter()
+        .zip(after)
+        .take_while(|(before, after)| before == after)
+        .count();
+    let suffix = before[prefix..]
+        .iter()
+        .rev()
+        .zip(after[prefix..].iter().rev())
+        .take_while(|(before, after)| before == after)
+        .count();
+
+    let mut result: Vec<ArrayChange> = before[..prefix].iter().map(ArrayChange::Same).collect();
+    result.extend(diff_arrays_middle(
+        &before[prefix..before.len() - suffix],
+        &after[prefix..after.len() - suffix],
+    ));
+    result.extend(
+        before[before.len() - suffix..]
+            .iter()
+            .map(ArrayChange::Same),
+    );
+    result
+}
+
+/// Pairs elements by their longest common subsequence, so an insertion or removal does not shift every later element
+/// into a change; removed and added elements between two common ones are paired up in order, the rest diff with null.
+fn diff_arrays_middle<'a>(before: &'a [tf::Value], after: &'a [tf::Value]) -> Vec<ArrayChange<'a>> {
+    // The table is quadratic: past the cap, elements pair by position
+    if before.len().saturating_mul(after.len()) > MAX_ARRAY_DIFF_CELLS {
+        return (0..before.len().max(after.len()))
+            .map(|index| match (before.get(index), after.get(index)) {
+                (Some(before), Some(after)) if before == after => ArrayChange::Same(before),
+                (before, after) => ArrayChange::Changed(
+                    before.unwrap_or(&tf::Value::Null),
+                    after.unwrap_or(&tf::Value::Null),
+                ),
+            })
+            .collect();
+    }
+
+    let mut common = vec![vec![0usize; after.len() + 1]; before.len() + 1];
+    for i in (0..before.len()).rev() {
+        for j in (0..after.len()).rev() {
+            common[i][j] = if before[i] == after[j] {
+                common[i + 1][j + 1] + 1
+            } else {
+                common[i + 1][j].max(common[i][j + 1])
+            };
+        }
+    }
+
+    let mut result: Vec<ArrayChange> = Vec::new();
+    let mut removed: Vec<&tf::Value> = Vec::new();
+    let mut added: Vec<&tf::Value> = Vec::new();
+    let flush = |result: &mut Vec<ArrayChange<'a>>,
+                 removed: &mut Vec<&'a tf::Value>,
+                 added: &mut Vec<&'a tf::Value>| {
+        for index in 0..removed.len().max(added.len()) {
+            let before_value = removed.get(index).copied().unwrap_or(&tf::Value::Null);
+            let after_value = added.get(index).copied().unwrap_or(&tf::Value::Null);
+            result.push(ArrayChange::Changed(before_value, after_value));
+        }
+        removed.clear();
+        added.clear();
+    };
+
+    let (mut i, mut j) = (0, 0);
+    while i < before.len() || j < after.len() {
+        if i < before.len() && j < after.len() && before[i] == after[j] {
+            flush(&mut result, &mut removed, &mut added);
+            result.push(ArrayChange::Same(&before[i]));
+            i += 1;
+            j += 1;
+        } else if j == after.len() || (i < before.len() && common[i + 1][j] >= common[i][j + 1]) {
+            removed.push(&before[i]);
+            i += 1;
+        } else {
+            added.push(&after[j]);
+            j += 1;
+        }
+    }
+    flush(&mut result, &mut removed, &mut added);
+    result
+}
+
+/// Turns lines rendered one level deeper into a list item: the first line's last indent becomes the `- ` marker.
+/// Nested renderers print nothing for an empty object or one whose only difference is a key turned null: the
+/// inline `fallback` keeps the element visible.
+fn render_array_item(lines: Vec<String>, indent_count: usize, fallback: &str) -> Vec<String> {
+    if lines.is_empty() {
+        return vec![format!("{}- {fallback}", INDENT_STR.repeat(indent_count))];
+    }
+    let nested_indent = INDENT_STR.repeat(indent_count + 1);
+    let item_indent = format!("{}- ", INDENT_STR.repeat(indent_count));
+    lines
+        .into_iter()
+        .enumerate()
+        .map(
+            |(index, line)| match (index, line.strip_prefix(&nested_indent)) {
+                (0, Some(rest)) => format!("{item_indent}{rest}"),
+                _ => line,
+            },
+        )
+        .collect()
+}
+
+fn render_changed_inline(before: &tf::Value, after: &tf::Value) -> String {
+    format!(
+        "{} -> {}",
+        render_plaintext(before),
+        render_plaintext(after)
+    )
+}
+
+fn render_changed_array_value(
+    before: &[tf::Value],
+    after: &[tf::Value],
+    indent_count: usize,
+    show_changed_values: bool,
+) -> Vec<String> {
+    let indent = INDENT_STR.repeat(indent_count);
+    let hidden_marker = format!("{indent}- ...");
+    let mut result: Vec<String> = Vec::new();
+    for change in diff_arrays(before, after) {
+        match change {
+            // A run of hidden elements keeps one marker, so a change still shows where in the array it is
+            ArrayChange::Same(_) if !show_changed_values => {
+                if result.last() != Some(&hidden_marker) {
+                    result.push(hidden_marker.clone());
+                }
+            }
+            ArrayChange::Same(value @ tf::Value::Object(map)) => {
+                result.extend(render_array_item(
+                    render_unchanged_hashmap_value(map, indent_count + 1),
+                    indent_count,
+                    &render_plaintext(value),
+                ));
+            }
+            ArrayChange::Same(value) => {
+                result.push(format!("{indent}- {}", render_plaintext(value)));
+            }
+            ArrayChange::Changed(
+                before_value @ tf::Value::Object(before),
+                after_value @ tf::Value::Object(after),
+            ) => {
+                result.extend(render_array_item(
+                    render_changed_hashmap_value(
+                        before,
+                        after,
+                        indent_count + 1,
+                        show_changed_values,
+                    ),
+                    indent_count,
+                    &render_changed_inline(before_value, after_value),
+                ));
+            }
+            ArrayChange::Changed(
+                before_value @ tf::Value::Array(before),
+                after_value @ tf::Value::Array(after),
+            ) => {
+                result.extend(render_array_item(
+                    render_changed_array_value(
+                        before,
+                        after,
+                        indent_count + 1,
+                        show_changed_values,
+                    ),
+                    indent_count,
+                    &render_changed_inline(before_value, after_value),
+                ));
+            }
+            ArrayChange::Changed(before, after) => {
+                result.push(format!(
+                    "{indent}- {}",
+                    render_changed_inline(before, after)
+                ));
+            }
+        }
+    }
+    result
+}
+
 fn render_changed(
     key: &str,
     before_value: &tf::Value,
@@ -197,6 +387,17 @@ fn render_changed(
     match (before_value, after_value) {
         (tf::Value::Object(before), tf::Value::Object(after)) => {
             render_changed_hashmap(key, before, after, indent_count, show_changed_values)
+        }
+        (tf::Value::Array(before), tf::Value::Array(after)) if before != after => {
+            let mut result: Vec<String> = Vec::new();
+            result.push(format!("{}{key}:", INDENT_STR.repeat(indent_count)));
+            result.extend(render_changed_array_value(
+                before,
+                after,
+                indent_count + 1,
+                show_changed_values,
+            ));
+            result
         }
         (tf::Value::Null, tf::Value::Object(after)) => {
             render_unchanged_hashmap(key, after, indent_count)
@@ -491,7 +692,8 @@ mod tests {
         fn before_after() {
             let result = test(Some(get_test_data()), Some(get_another_test_data())).unwrap();
 
-            let expected = r#"array: [42] -> [43]
+            let expected = r#"array:
+  - 42 -> 43
 bool: true -> false
 float: 42.1 -> 43.1
 integer: 42 -> 43
@@ -640,6 +842,200 @@ object:
 sensitive: sensitive -> sensitive (known after apply)
 string: "abc" -> (known after apply)"#;
             pretty_assertions::assert_eq!(result, expected);
+        }
+
+        fn test_array(
+            before: Vec<tf::Value>,
+            after: Vec<tf::Value>,
+            show_changed_values: bool,
+        ) -> String {
+            let mut before_map = std::collections::HashMap::new();
+            before_map.insert("array".to_string(), tf::Value::Array(before));
+            let mut after_map = std::collections::HashMap::new();
+            after_map.insert("array".to_string(), tf::Value::Array(after));
+            test_show_changed_values(Some(before_map), Some(after_map), show_changed_values)
+        }
+
+        fn strings(values: &[&str]) -> Vec<tf::Value> {
+            values
+                .iter()
+                .map(|value| tf::Value::String(value.to_string()))
+                .collect()
+        }
+
+        fn object(entries: Vec<(&str, tf::Value)>) -> tf::Value {
+            tf::Value::Object(
+                entries
+                    .into_iter()
+                    .map(|(key, value)| (key.to_string(), value))
+                    .collect(),
+            )
+        }
+
+        #[test]
+        fn array_insert() {
+            let result = test_array(
+                strings(&["a", "b", "c"]),
+                strings(&["a", "x", "b", "c"]),
+                true,
+            );
+
+            let expected = r#"array:
+  - "a"
+  - null -> "x"
+  - "b"
+  - "c""#;
+            pretty_assertions::assert_eq!(result, expected);
+        }
+
+        #[test]
+        fn array_remove_hide_unchanged() {
+            let result = test_array(strings(&["a", "b", "c"]), strings(&["a", "c"]), false);
+
+            let expected = r#"array:
+  - ...
+  - "b" -> null
+  - ..."#;
+            pretty_assertions::assert_eq!(result, expected);
+        }
+
+        #[test]
+        fn array_replace_and_append() {
+            let result = test_array(strings(&["a", "b"]), strings(&["a", "x", "y"]), false);
+
+            let expected = r#"array:
+  - ...
+  - "b" -> "x"
+  - null -> "y""#;
+            pretty_assertions::assert_eq!(result, expected);
+        }
+
+        #[test]
+        fn array_unknown_element() {
+            let result = test_array(
+                strings(&["a", "b"]),
+                vec![tf::Value::String("a".to_string()), tf::Value::Unknown],
+                false,
+            );
+
+            let expected = r#"array:
+  - ...
+  - "b" -> (known after apply)"#;
+            pretty_assertions::assert_eq!(result, expected);
+        }
+
+        #[test]
+        fn array_objects() {
+            let before = vec![
+                object(vec![
+                    ("port", tf::Value::Integer(80)),
+                    ("name", tf::Value::String("http".to_string())),
+                ]),
+                object(vec![("port", tf::Value::Integer(22))]),
+            ];
+            let after = vec![
+                object(vec![
+                    ("port", tf::Value::Integer(443)),
+                    ("name", tf::Value::String("http".to_string())),
+                ]),
+                object(vec![("port", tf::Value::Integer(22))]),
+            ];
+
+            let result = test_array(before.clone(), after.clone(), true);
+            let expected = r#"array:
+  - name: "http"
+    port: 80 -> 443
+  - port: 22"#;
+            pretty_assertions::assert_eq!(result, expected);
+
+            let result = test_array(before, after, false);
+            let expected = r#"array:
+  - port: 80 -> 443
+  - ..."#;
+            pretty_assertions::assert_eq!(result, expected);
+        }
+
+        #[test]
+        fn array_nested() {
+            let result = test_array(
+                vec![tf::Value::Array(strings(&["a", "b"]))],
+                vec![tf::Value::Array(strings(&["a", "c"]))],
+                false,
+            );
+
+            let expected = r#"array:
+  - - ...
+    - "b" -> "c""#;
+            pretty_assertions::assert_eq!(result, expected);
+        }
+
+        #[test]
+        fn array_empty_object() {
+            let result = test_array(
+                vec![object(vec![]), tf::Value::String("a".to_string())],
+                vec![object(vec![]), tf::Value::String("b".to_string())],
+                true,
+            );
+
+            let expected = r#"array:
+  - {}
+  - "a" -> "b""#;
+            pretty_assertions::assert_eq!(result, expected);
+        }
+
+        #[test]
+        fn array_object_key_to_null() {
+            let result = test_array(
+                vec![object(vec![
+                    ("a", tf::Value::Integer(1)),
+                    ("b", tf::Value::Null),
+                ])],
+                vec![object(vec![("a", tf::Value::Integer(1))])],
+                false,
+            );
+
+            let expected = r#"array:
+  - {a: 1, b: null} -> {a: 1}"#;
+            pretty_assertions::assert_eq!(result, expected);
+        }
+
+        #[test]
+        fn array_large_append() {
+            let before: Vec<tf::Value> = (0..100_000).map(tf::Value::Integer).collect();
+            let mut after = before.clone();
+            after.push(tf::Value::Integer(-1));
+
+            let result = test_array(before, after, false);
+
+            let expected = r#"array:
+  - ...
+  - null -> -1"#;
+            pretty_assertions::assert_eq!(result, expected);
+        }
+
+        #[test]
+        fn array_large_both_ends_changed() {
+            let before: Vec<tf::Value> = (0..3_000).map(tf::Value::Integer).collect();
+            let mut after = before.clone();
+            after[0] = tf::Value::Integer(-1);
+            after[2_999] = tf::Value::Integer(-2);
+
+            let result = test_array(before, after, false);
+
+            let expected = r#"array:
+  - 0 -> -1
+  - ...
+  - 2999 -> -2"#;
+            pretty_assertions::assert_eq!(result, expected);
+        }
+
+        #[test]
+        fn array_unchanged() {
+            let result = test_array(strings(&["a"]), strings(&["a"]), true);
+            pretty_assertions::assert_eq!(result, r#"array: ["a"]"#);
+
+            let result = test_array(strings(&["a"]), strings(&["a"]), false);
+            pretty_assertions::assert_eq!(result, "");
         }
 
         #[test]

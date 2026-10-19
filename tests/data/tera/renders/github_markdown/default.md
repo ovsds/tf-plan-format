@@ -147,6 +147,48 @@ length: 4 -> 8
 </details>
 </details>
 <details>
+<summary>🔄tests/data/plans/update-array/opentofu.tfplan.json</summary>
+<details>
+<summary>🔄terraform_data.foo-bar
+</summary>
+
+```
+input:
+  names:
+    - ...
+    - null -> "x"
+    - ...
+    - "c" -> null
+  ports:
+    - port: 80 -> 443
+    - ...
+output: {names: ["a", "b", "c"], ports: [{name: "http", port: 80}, {name: "ssh", port: 22}]} -> (known after apply)
+```
+
+</details>
+</details>
+<details>
+<summary>🔄tests/data/plans/update-array/terraform.tfplan.json</summary>
+<details>
+<summary>🔄terraform_data.foo-bar
+</summary>
+
+```
+input:
+  names:
+    - ...
+    - null -> "x"
+    - ...
+    - "c" -> null
+  ports:
+    - port: 80 -> 443
+    - ...
+output: {names: ["a", "b", "c"], ports: [{name: "http", port: 80}, {name: "ssh", port: 22}]} -> (known after apply)
+```
+
+</details>
+</details>
+<details>
 <summary>🔄tests/data/plans/update/opentofu.tfplan.json</summary>
 <details>
 <summary>🔄terraform_data.foo-bar
