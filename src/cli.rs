@@ -49,6 +49,14 @@ pub enum Commands {
             default_value = "false"
         )]
         changed_values: bool,
+        #[clap(
+            long,
+            help = "Whether to render no-op changes",
+            default_value = "false"
+        )]
+        show_no_op: bool,
+        #[clap(long, help = "Whether to render read changes", default_value = "false")]
+        show_read: bool,
     },
 }
 
@@ -69,7 +77,9 @@ pub fn root(
         Some(Commands::Github {
             file,
             changed_values,
-        }) => github(file, *changed_values, stdout),
+            show_no_op,
+            show_read,
+        }) => github(file, *changed_values, *show_no_op, *show_read, stdout),
         None => none(stdout, stderr),
     }
 }
@@ -104,6 +114,8 @@ fn custom(
 fn github(
     files: &[String],
     show_changed_values: bool,
+    show_no_op: bool,
+    show_read: bool,
     mut stdout: impl std::io::Write,
 ) -> Result<(), types::Error> {
     let data = tf::Data::from_files(files).map_err(|e| {
@@ -111,13 +123,14 @@ fn github(
     })?;
 
     // Should never fail as the template is hardcoded
-    let result = template::render_github(&data, show_changed_values).map_err(|e| {
-        types::Error::command(
-            "Failed to render template".to_string(),
-            exitcode::DATAERR,
-            e,
-        )
-    })?;
+    let result = template::render_github(&data, show_changed_values, show_no_op, show_read)
+        .map_err(|e| {
+            types::Error::command(
+                "Failed to render template".to_string(),
+                exitcode::DATAERR,
+                e,
+            )
+        })?;
 
     writeln!(stdout, "{result}").unwrap();
 

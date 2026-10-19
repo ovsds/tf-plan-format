@@ -1,5 +1,5 @@
 <details>
-<summary>✅tests/data/plans/create/opentofu.tfplan.json</summary>
+<summary>✅create/opentofu.tfplan.json - Plan: 1 to add, 0 to change, 0 to destroy</summary>
 <details>
 <summary>✅terraform_data.foo-bar
 </summary>
@@ -14,7 +14,7 @@ triggers_replace: null
 </details>
 </details>
 <details>
-<summary>✅tests/data/plans/create/terraform.tfplan.json</summary>
+<summary>✅create/terraform.tfplan.json - Plan: 1 to add, 0 to change, 0 to destroy</summary>
 <details>
 <summary>✅terraform_data.foo-bar
 </summary>
@@ -29,7 +29,7 @@ triggers_replace: null
 </details>
 </details>
 <details>
-<summary>♻️tests/data/plans/delete-create/opentofu.tfplan.json</summary>
+<summary>♻️delete-create/opentofu.tfplan.json - Plan: 1 to add, 0 to change, 1 to destroy</summary>
 <details>
 <summary>♻️null_resource.foo-bar
 </summary>
@@ -43,7 +43,7 @@ triggers:
 </details>
 </details>
 <details>
-<summary>♻️tests/data/plans/delete-create/terraform.tfplan.json</summary>
+<summary>♻️delete-create/terraform.tfplan.json - Plan: 1 to add, 0 to change, 1 to destroy</summary>
 <details>
 <summary>♻️null_resource.foo-bar
 </summary>
@@ -57,7 +57,7 @@ triggers:
 </details>
 </details>
 <details>
-<summary>❌tests/data/plans/delete/opentofu.tfplan.json</summary>
+<summary>❌delete/opentofu.tfplan.json - Plan: 0 to add, 0 to change, 1 to destroy</summary>
 <details>
 <summary>❌terraform_data.foo-bar
 </summary>
@@ -72,7 +72,7 @@ triggers_replace: null
 </details>
 </details>
 <details>
-<summary>❌tests/data/plans/delete/terraform.tfplan.json</summary>
+<summary>❌delete/terraform.tfplan.json - Plan: 0 to add, 0 to change, 1 to destroy</summary>
 <details>
 <summary>❌terraform_data.foo-bar
 </summary>
@@ -87,45 +87,23 @@ triggers_replace: null
 </details>
 </details>
 <details>
-<summary>🟰tests/data/plans/no-op/opentofu.tfplan.json</summary>
-<details>
-<summary>🟰terraform_data.foo-bar
-</summary>
-
-```
-id: "70ab275d-63ef-e14a-1bd4-75d2a3a580f7"
-input: "foo"
-output: "foo"
-triggers_replace: null
-```
-
-</details>
-</details>
-<details>
-<summary>🟰tests/data/plans/no-op/terraform.tfplan.json</summary>
-<details>
-<summary>🟰terraform_data.foo-bar
-</summary>
-
-```
-id: "0f61b5b9-e9e3-1625-f62b-501a232653f9"
-input: "foo"
-output: "foo"
-triggers_replace: null
-```
-
-</details>
-</details>
-<details>
-<summary>tests/data/plans/no-resources/opentofu.tfplan.json</summary>
+<summary>no-op/opentofu.tfplan.json - No changes</summary>
 No resource changes
 </details>
 <details>
-<summary>tests/data/plans/no-resources/terraform.tfplan.json</summary>
+<summary>no-op/terraform.tfplan.json - No changes</summary>
 No resource changes
 </details>
 <details>
-<summary>🔄tests/data/plans/outputs/opentofu.tfplan.json</summary>
+<summary>no-resources/opentofu.tfplan.json - No changes</summary>
+No resource changes
+</details>
+<details>
+<summary>no-resources/terraform.tfplan.json - No changes</summary>
+No resource changes
+</details>
+<details>
+<summary>🔄outputs/opentofu.tfplan.json - Plan: 0 to add, 1 to change, 0 to destroy</summary>
 <details>
 <summary>🔄terraform_data.foo-bar
 </summary>
@@ -138,9 +116,22 @@ triggers_replace: null
 ```
 
 </details>
+<details>
+<summary>✅🔄❌Outputs
+</summary>
+
+```
+added: null -> "added"
+changed: "before" -> "after"
+removed: "removed" -> null
+secret: sensitive
+unknown: "foo" -> (known after apply)
+```
+
+</details>
 </details>
 <details>
-<summary>🔄tests/data/plans/outputs/terraform.tfplan.json</summary>
+<summary>🔄outputs/terraform.tfplan.json - Plan: 0 to add, 1 to change, 0 to destroy</summary>
 <details>
 <summary>🔄terraform_data.foo-bar
 </summary>
@@ -153,9 +144,22 @@ triggers_replace: null
 ```
 
 </details>
+<details>
+<summary>✅🔄❌Outputs
+</summary>
+
+```
+added: null -> "added"
+changed: "before" -> "after"
+removed: "removed" -> null
+secret: sensitive
+unknown: "foo" -> (known after apply)
+```
+
+</details>
 </details>
 <details>
-<summary>♻️tests/data/plans/sensitive/opentofu.tfplan.json</summary>
+<summary>♻️sensitive/opentofu.tfplan.json - Plan: 1 to add, 0 to change, 1 to destroy</summary>
 <details>
 <summary>♻️random_bytes.test
 </summary>
@@ -170,7 +174,7 @@ length: 4 -> 8
 </details>
 </details>
 <details>
-<summary>♻️tests/data/plans/sensitive/terraform.tfplan.json</summary>
+<summary>♻️sensitive/terraform.tfplan.json - Plan: 1 to add, 0 to change, 1 to destroy</summary>
 <details>
 <summary>♻️random_bytes.test
 </summary>
@@ -185,7 +189,7 @@ length: 4 -> 8
 </details>
 </details>
 <details>
-<summary>🔄tests/data/plans/update-array/opentofu.tfplan.json</summary>
+<summary>🔄update-array/opentofu.tfplan.json - Plan: 0 to add, 1 to change, 0 to destroy</summary>
 <details>
 <summary>🔄terraform_data.foo-bar
 </summary>
@@ -210,7 +214,7 @@ triggers_replace: null
 </details>
 </details>
 <details>
-<summary>🔄tests/data/plans/update-array/terraform.tfplan.json</summary>
+<summary>🔄update-array/terraform.tfplan.json - Plan: 0 to add, 1 to change, 0 to destroy</summary>
 <details>
 <summary>🔄terraform_data.foo-bar
 </summary>
@@ -235,7 +239,7 @@ triggers_replace: null
 </details>
 </details>
 <details>
-<summary>🔄tests/data/plans/update/opentofu.tfplan.json</summary>
+<summary>🔄update/opentofu.tfplan.json - Plan: 0 to add, 1 to change, 0 to destroy</summary>
 <details>
 <summary>🔄terraform_data.foo-bar
 </summary>
@@ -250,7 +254,7 @@ triggers_replace: null
 </details>
 </details>
 <details>
-<summary>🔄tests/data/plans/update/terraform.tfplan.json</summary>
+<summary>🔄update/terraform.tfplan.json - Plan: 0 to add, 1 to change, 0 to destroy</summary>
 <details>
 <summary>🔄terraform_data.foo-bar
 </summary>

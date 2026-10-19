@@ -32,12 +32,28 @@ pub fn render(engine: &Engine, data: &tf::Data, template: &str) -> Result<String
 
 /// # Errors
 /// Returns an error if rendering fails
-pub fn render_github(data: &tf::Data, show_changed_values: bool) -> Result<String, types::Error> {
+pub fn render_github(
+    data: &tf::Data,
+    show_changed_values: bool,
+    show_no_op: bool,
+    show_read: bool,
+) -> Result<String, types::Error> {
     let template = tera::GITHUB_MARKDOWN_TEMPLATE;
+    let mut hidden_actions = Vec::new();
+    if !show_no_op {
+        hidden_actions.push(tf::Action::NoOp);
+    }
+    if !show_read {
+        hidden_actions.push(tf::Action::Read);
+    }
     let mut options = tera::RenderOptions::new();
     options.insert(
         "show_changed_values".to_string(),
         tera::RenderOptionValue::Bool(show_changed_values),
+    );
+    options.insert(
+        "hidden_actions".to_string(),
+        tera::RenderOptionValue::Actions(hidden_actions),
     );
     tera::render(data, template, Some(options))
 }
@@ -84,7 +100,7 @@ mod tests {
         #[test]
         fn default() {
             let data = tf::tests::get_test_data();
-            let result = render_github(&data, false).unwrap();
+            let result = render_github(&data, false, false, false).unwrap();
 
             let expected =
                 utils::test::get_test_data_file_contents("tera/renders/github_markdown/default.md");

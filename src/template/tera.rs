@@ -11,12 +11,16 @@ const INDENT_STR: &str = "  ";
 const MAX_ARRAY_DIFF_CELLS: usize = 4_000_000;
 
 pub const GITHUB_MARKDOWN_TEMPLATE: &str = "
-{%- for plan_key, plan in data.plans %}<details>
-<summary>{{ render_actions(actions=plan.unique_actions) }}{{ plan_key }}</summary>
-{%- if not plan.changes %}
+{%- for plan_key, plan in data.plans %}
+{%- set changes = plan.changes | filter_actions(exclude=options.hidden_actions) %}<details>
+<summary>{{ render_actions(actions=changes | map(attribute=\"action\")) }}{{ plan.title }}
+{%- if plan.summary.add == 0 and plan.summary.change == 0 and plan.summary.destroy == 0 and not plan.outputs.actions %} - No changes
+{%- else %} - Plan: {{ plan.summary.add }} to add, {{ plan.summary.change }} to change, {{ plan.summary.destroy }} to destroy
+{%- endif %}</summary>
+{%- if not changes and not plan.outputs.actions %}
 No resource changes
 {%- else %}
-{%- for change in plan.changes %}
+{%- for change in changes %}
 <details>
 <summary>{{ render_action(action=change.action) }}{{ change.address }}
 </summary>
@@ -27,6 +31,17 @@ No resource changes
 
 </details>
 {%- endfor %}
+{%- if plan.outputs.actions %}
+<details>
+<summary>{{ render_actions(actions=plan.outputs.actions) }}Outputs
+</summary>
+
+```
+{{ render_values(before=plan.outputs.before, after=plan.outputs.after, show_changed_values=options.show_changed_values) }}
+```
+
+</details>
+{%- endif %}
 {%- endif %}
 </details>
 {% endfor %}";
@@ -475,6 +490,7 @@ fn tera_render_values(args: &Args) -> tera::Result<tera::Value> {
 pub enum RenderOptionValue {
     Bool(bool),
     String(String),
+    Actions(Vec<tf::Action>),
 }
 
 pub type RenderOptions = std::collections::HashMap<String, RenderOptionValue>;
@@ -1233,6 +1249,10 @@ string: "abc" -> (known after apply)"#;
             options.insert(
                 "show_changed_values".to_string(),
                 RenderOptionValue::Bool(false),
+            );
+            options.insert(
+                "hidden_actions".to_string(),
+                RenderOptionValue::Actions(vec![tf::Action::NoOp, tf::Action::Read]),
             );
             let result = render(&data, GITHUB_MARKDOWN_TEMPLATE, Some(options)).unwrap();
 
