@@ -2,7 +2,35 @@
 
 [![CI](https://github.com/ovsds/tf-plan-format/workflows/Check%20PR/badge.svg)](https://github.com/ovsds/tf-plan-format/actions?query=workflow%3A%22%22Check+PR%22%22)
 
-Terraform Plan Format
+Renders Terraform and OpenTofu plans (the JSON from `show -json`) as GitHub markdown or through your own template.
+
+## Installation
+
+Release tags are plain versions without a `v` prefix (`0.1.0`), matching the version in `Cargo.toml`. Pick a version from the [releases page](https://github.com/ovsds/tf-plan-format/releases); `0.1.0` below is a placeholder.
+
+### mise
+
+```sh
+mise use github:ovsds/tf-plan-format@0.1.0
+```
+
+This installs the `tf_plan_format` executable from the release archive for your platform.
+
+### Release archive
+
+Each release has an archive per platform, `tf_plan_format-<version>-<os>-<arch>.tar.gz`, for `linux-amd64`, `linux-arm64`, `darwin-amd64` and `darwin-arm64`, plus a `checksums.txt` with their SHA-256 sums. The archive holds the single `tf_plan_format` executable. Linux binaries are built for glibc; on musl-based systems use the container image.
+
+```sh
+curl -fsSL https://github.com/ovsds/tf-plan-format/releases/download/0.1.0/tf_plan_format-0.1.0-linux-amd64.tar.gz | tar -xz -C ~/.local/bin tf_plan_format
+```
+
+### Container image
+
+Each release also publishes `ghcr.io/ovsds/tf-plan-format:<release tag>` for `linux/amd64` and `linux/arm64`: a statically linked binary in an empty (`scratch`) image whose entrypoint is `tf_plan_format`.
+
+```sh
+docker run --rm -v "$PWD:/infra:ro" ghcr.io/ovsds/tf-plan-format:0.1.0 github --file /infra/plan.json
+```
 
 ## Installation
 
@@ -16,6 +44,185 @@ curl -fsSL https://raw.githubusercontent.com/ovsds/tf-plan-format/main/setup.sh 
 ```
 
 ## Usage
+
+Produce the plan JSON with OpenTofu or Terraform:
+
+```sh
+tofu plan -out=plan.tfplan && tofu show -json plan.tfplan > plan.json
+terraform plan -out=plan.tfplan && terraform show -json plan.tfplan > plan.json
+```
+
+> [!WARNING]
+> The plan file and its JSON contain sensitive values in clear text. Do not commit, publish or upload them as CI artifacts; keep them in a temporary directory.
+
+Both commands read plans with `-f`, `--file`: a path or a glob (quote it so the tool expands it). Repeat the flag or pass several values to read several plans; they are rendered in path order. A path or glob that matches no file, or a file that is not a plan, fails the command with exit code 65.
+
+Actions are shown as icons: ✅ create, ♻️ replace (delete and create), 🔍 read, 🔄 update, ❌ delete, 🟰 no-op, ❓ unknown.
+
+### `github`
+
+Renders GitHub markdown for a PR comment:
+
+- one collapsible block per plan, titled from its path: the file name is dropped when all plans share it, then the leading directories all plans share, so `plans/prod/plan.json` and `plans/stage/plan.json` become `prod` and `stage`, and a single `infra/plan.json` becomes `infra`;
+- the block's summary shows the icons of the plan's actions, the title and `Plan: X to add, Y to change, Z to destroy`, or `No changes`;
+- inside, a collapsible block per resource change with its address and values, and an `Outputs` block when outputs change.
+
+Sensitive values are shown as `sensitive`, `sensitive (changed)` or `sensitive (known after apply)`, values known only after apply as `(known after apply)`.
+
+| Flag                     | Default | Effect                                                                                                                                                               |
+| ------------------------ | ------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `-f`, `--file`           |         | Plan path or glob, repeatable                                                                                                                                        |
+| `-c`, `--changed-values` | off     | Also list the attributes and array elements that did not change; by default updates and replacements list only what changed (skipped array elements show as `- ...`) |
+| `--show-no-op`           | off     | Render no-op changes                                                                                                                                                 |
+| `--show-read`            | off     | Render data source reads                                                                                                                                             |
+| `--max-length <BYTES>`   | none    | Limit the output length, see below                                                                                                                                   |
+
+With `--max-length`, output longer than the limit (in bytes, the trailing newline not counted) is shortened: the largest values blocks are replaced with `_Values not shown to fit the length limit_` until it fits, and if that is not enough the last plans are dropped. A closing note says what was left out, for example `_Output limited to 1500 bytes: the last 3 plans, values of 3 changes and outputs of 1 plan not shown_`. If even the note does not fit, only the note is printed.
+
+```sh
+tf_plan_format github --file tests/data/plans/outputs/opentofu.tfplan.json
+```
+
+````markdown
+<details>
+<summary>✅🔄❌outputs - Plan: 0 to add, 1 to change, 0 to destroy</summary>
+<details>
+<summary>🔄terraform_data.foo-bar
+</summary>
+
+```
+input: "foo" -> "bar"
+output: "foo" -> (known after apply)
+```
+
+</details>
+<details>
+<summary>✅🔄❌Outputs
+</summary>
+
+```
+added: null -> "added"
+changed: "before" -> "after"
+removed: "removed" -> null
+secret: sensitive -> sensitive (changed)
+unknown: "foo" -> (known after apply)
+```
+
+</details>
+</details>
+````
+
+### `custom`
+
+Renders your own template:
+
+| Flag               | Default | Effect                                                                        |
+| ------------------ | ------- | ----------------------------------------------------------------------------- |
+| `-e`, `--engine`   | `tera`  | Template engine; only [Tera](https://keats.github.io/tera/docs/) is supported |
+| `-f`, `--file`     |         | Plan path or glob, repeatable                                                 |
+| `-t`, `--template` |         | The template text (required)                                                  |
+
+#### Template context
+
+`data.plans` maps each plan's file path to the plan, sorted by path. A plan has:
+
+- `title`: the short title described for `github`;
+- `changes`: the resource changes in plan order, each with `address`, `name`, `action`, `before` and `after` (attribute name to value, `null` when the resource does not exist on that side) and `raw`, the change as read from the JSON;
+- `unique_actions`: the distinct actions of `changes`;
+- `summary`: the `add`, `change` and `destroy` counts of `Plan: X to add, ...`, where a replacement counts in both `add` and `destroy`;
+- `outputs`: the changed outputs, with `before` and `after` (output name to value) and `actions`, their distinct actions;
+- `raw`: the plan's `resource_changes` and `output_changes` as read from the JSON.
+
+`raw` is not masked: it holds sensitive values in clear text.
+
+An action is one of `Create`, `DeleteCreate` (a replacement, in either order), `Read`, `Update`, `Delete`, `NoOp` or `Unknown` (any other combination); lists of actions are sorted in this order.
+
+A value is an object with its type in `op` and its content in `path`, such as `{"op": "String", "path": "foo"}`. The types with content are `String`, `Integer`, `Float`, `Boolean`, `Array` (a list of values) and `Object` (a map of values). `Null`, `Sensitive`, `SensitiveChanged` (in `after` only: a sensitive value that differs from `before`), `Unknown` (known after apply) and `SensitiveUnknown` have no `path`. In a template: `{% if value.op == "String" %}{{ value.path }}{% endif %}`.
+
+#### Functions and filters
+
+All arguments are named, for example `render_action(action=change.action)`.
+
+- `render_values(before, after, show_changed_values=true)`: renders two attribute maps as the `github` command does, a `name: value` or `name: before -> after` line per attribute; with one side `null`, lists the other side's values. `show_changed_values=false` leaves out what did not change.
+- `render_action(action)`: the action's icon.
+- `render_actions(actions)`: the icons of a list of actions, deduplicated and sorted.
+- `filter_actions(include=[...])` or `filter_actions(exclude=[...])`: a filter that keeps the items of a list, such as `changes`, whose `action` is (or is not) one of the given actions; exactly one of the two arguments is required.
+
+#### Example
+
+`summary.tera`:
+
+```jinja
+{% for path, plan in data.plans -%}
+{{ render_actions(actions=plan.unique_actions) }} {{ plan.title }}: {{ plan.summary.add }} to add, {{ plan.summary.change }} to change, {{ plan.summary.destroy }} to destroy
+{% for change in plan.changes | filter_actions(exclude=["Read", "NoOp"]) -%}
+{{ render_action(action=change.action) }} {{ change.address }}
+{{ render_values(before=change.before, after=change.after, show_changed_values=false) }}
+{% endfor -%}
+{% endfor -%}
+```
+
+```sh
+tf_plan_format custom \
+  --file tests/data/plans/read/opentofu.tfplan.json \
+  --file tests/data/plans/sensitive/opentofu.tfplan.json \
+  --template "$(cat summary.tera)"
+```
+
+```text
+🔍🔄 read: 0 to add, 1 to change, 0 to destroy
+🔄 terraform_data.foo-bar
+input: "foo" -> "bar"
+output: "foo" -> (known after apply)
+♻️ sensitive: 1 to add, 0 to change, 1 to destroy
+♻️ random_bytes.test
+base64: sensitive -> sensitive (known after apply)
+hex: sensitive -> sensitive (known after apply)
+length: 4 -> 8
+```
+
+### GitHub Actions
+
+Pin the tools in the repository's `mise.toml` (`mise use` writes it):
+
+```toml
+[tools]
+opentofu = "1.13.1"
+"github:ovsds/tf-plan-format" = "0.1.0"
+```
+
+Then plan on every pull request and keep one plan comment up to date. The plan and its JSON stay in the runner's temporary directory and are never uploaded. `--max-length 65000` leaves headroom under GitHub's 65536 character comment limit.
+
+```yaml
+on: pull_request
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  plan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: jdx/mise-action@9b200bcecbfd6303e69a4a261b2e09e3757440a7 # v5.2.0
+
+      - name: Plan
+        run: |
+          mkdir -p "$RUNNER_TEMP/infra"
+          tofu init -input=false
+          tofu plan -input=false -out="$RUNNER_TEMP/infra/plan.tfplan"
+          tofu show -json "$RUNNER_TEMP/infra/plan.tfplan" > "$RUNNER_TEMP/infra/plan.json"
+          tf_plan_format github --file "$RUNNER_TEMP/infra/plan.json" --max-length 65000 > "$RUNNER_TEMP/plan.md"
+
+      - uses: marocchino/sticky-pull-request-comment@5770ad5eb8f42dd2c4f34da00c94c5381e49af88 # v3.0.5
+        with:
+          header: plan
+          path: ${{ runner.temp }}/plan.md
+```
 
 ## Development
 
