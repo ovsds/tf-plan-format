@@ -263,19 +263,25 @@ fn render_changed_array_value(
     show_changed_values: bool,
 ) -> Vec<String> {
     let indent = INDENT_STR.repeat(indent_count);
+    let hidden_marker = format!("{indent}- ...");
     let mut result: Vec<String> = Vec::new();
     for change in diff_arrays(before, after) {
         match change {
-            ArrayChange::Same(tf::Value::Object(value)) if show_changed_values => {
+            // A run of hidden elements keeps one marker, so a change still shows where in the array it is
+            ArrayChange::Same(_) if !show_changed_values => {
+                if result.last() != Some(&hidden_marker) {
+                    result.push(hidden_marker.clone());
+                }
+            }
+            ArrayChange::Same(tf::Value::Object(value)) => {
                 result.extend(render_array_item(
                     render_unchanged_hashmap_value(value, indent_count + 1),
                     indent_count,
                 ));
             }
-            ArrayChange::Same(value) if show_changed_values => {
+            ArrayChange::Same(value) => {
                 result.push(format!("{indent}- {}", render_plaintext(value)));
             }
-            ArrayChange::Same(_) => {}
             ArrayChange::Changed(tf::Value::Object(before), tf::Value::Object(after)) => {
                 result.extend(render_array_item(
                     render_changed_hashmap_value(
@@ -826,7 +832,9 @@ string: "abc" -> (known after apply)"#;
             let result = test_array(strings(&["a", "b", "c"]), strings(&["a", "c"]), false);
 
             let expected = r#"array:
-  - "b" -> null"#;
+  - ...
+  - "b" -> null
+  - ..."#;
             pretty_assertions::assert_eq!(result, expected);
         }
 
@@ -835,6 +843,7 @@ string: "abc" -> (known after apply)"#;
             let result = test_array(strings(&["a", "b"]), strings(&["a", "x", "y"]), false);
 
             let expected = r#"array:
+  - ...
   - "b" -> "x"
   - null -> "y""#;
             pretty_assertions::assert_eq!(result, expected);
@@ -849,6 +858,7 @@ string: "abc" -> (known after apply)"#;
             );
 
             let expected = r#"array:
+  - ...
   - "b" -> (known after apply)"#;
             pretty_assertions::assert_eq!(result, expected);
         }
@@ -879,7 +889,8 @@ string: "abc" -> (known after apply)"#;
 
             let result = test_array(before, after, false);
             let expected = r#"array:
-  - port: 80 -> 443"#;
+  - port: 80 -> 443
+  - ..."#;
             pretty_assertions::assert_eq!(result, expected);
         }
 
@@ -892,7 +903,8 @@ string: "abc" -> (known after apply)"#;
             );
 
             let expected = r#"array:
-  - - "b" -> "c""#;
+  - - ...
+    - "b" -> "c""#;
             pretty_assertions::assert_eq!(result, expected);
         }
 
