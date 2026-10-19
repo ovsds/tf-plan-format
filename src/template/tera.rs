@@ -79,7 +79,15 @@ fn render_plaintext(value: &tf::Value) -> String {
                 .collect::<Vec<String>>()
                 .join(", ")
         ),
-        tf::Value::Object(value) => format!("{}", tera::to_value(value).unwrap()),
+        tf::Value::Object(value) => format!(
+            "{{{}}}",
+            value
+                .iter()
+                .sorted_by_key(|x| x.0)
+                .map(|(key, value)| format!("{key}: {}", render_plaintext(value)))
+                .collect::<Vec<String>>()
+                .join(", ")
+        ),
         tf::Value::Null => "null".to_string(),
     }
 }
@@ -630,6 +638,27 @@ object:
   inner: 42 -> (known after apply)
 sensitive: sensitive -> sensitive
 string: "abc" -> (known after apply)"#;
+            pretty_assertions::assert_eq!(result, expected);
+        }
+
+        #[test]
+        fn object_to_unknown() {
+            let mut before = std::collections::HashMap::new();
+            before.insert("object".to_string(), {
+                let mut map = std::collections::HashMap::new();
+                map.insert(
+                    "b".to_string(),
+                    tf::Value::Array(vec![tf::Value::Integer(1)]),
+                );
+                map.insert("a".to_string(), tf::Value::String("x".to_string()));
+                tf::Value::Object(map)
+            });
+            let mut after = std::collections::HashMap::new();
+            after.insert("object".to_string(), tf::Value::Unknown);
+
+            let result = test_show_changed_values(Some(before), Some(after), false);
+
+            let expected = r#"object: {a: "x", b: [1]} -> (known after apply)"#;
             pretty_assertions::assert_eq!(result, expected);
         }
 
