@@ -119,6 +119,32 @@ No resource changes
 No resource changes
 </details>
 <details>
+<summary>🔄tests/data/plans/outputs/opentofu.tfplan.json</summary>
+<details>
+<summary>🔄terraform_data.foo-bar
+</summary>
+
+```
+input: "foo" -> "bar"
+output: "foo" -> (known after apply)
+```
+
+</details>
+</details>
+<details>
+<summary>🔄tests/data/plans/outputs/terraform.tfplan.json</summary>
+<details>
+<summary>🔄terraform_data.foo-bar
+</summary>
+
+```
+input: "foo" -> "bar"
+output: "foo" -> (known after apply)
+```
+
+</details>
+</details>
+<details>
 <summary>♻️tests/data/plans/sensitive/opentofu.tfplan.json</summary>
 <details>
 <summary>♻️random_bytes.test

@@ -125,6 +125,36 @@ No resource changes
 No resource changes
 </details>
 <details>
+<summary>🔄tests/data/plans/outputs/opentofu.tfplan.json</summary>
+<details>
+<summary>🔄terraform_data.foo-bar
+</summary>
+
+```
+id: "567018a0-5e04-1bae-7c35-1b64599f8bb3"
+input: "foo" -> "bar"
+output: "foo" -> (known after apply)
+triggers_replace: null
+```
+
+</details>
+</details>
+<details>
+<summary>🔄tests/data/plans/outputs/terraform.tfplan.json</summary>
+<details>
+<summary>🔄terraform_data.foo-bar
+</summary>
+
+```
+id: "a5b815d4-2349-e64a-9c56-ad4f7abee3d2"
+input: "foo" -> "bar"
+output: "foo" -> (known after apply)
+triggers_replace: null
+```
+
+</details>
+</details>
+<details>
 <summary>♻️tests/data/plans/sensitive/opentofu.tfplan.json</summary>
 <details>
 <summary>♻️random_bytes.test
