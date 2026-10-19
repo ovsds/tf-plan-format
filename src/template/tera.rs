@@ -65,7 +65,8 @@ fn tera_render_actions(args: &Args) -> tera::Result<tera::Value> {
 
 fn render_plaintext(value: &tf::Value) -> String {
     match value {
-        tf::Value::Sensitive | tf::Value::SensitiveUnknown => "sensitive".to_string(),
+        tf::Value::Sensitive => "sensitive".to_string(),
+        tf::Value::SensitiveUnknown => "sensitive (known after apply)".to_string(),
         tf::Value::Unknown => "(known after apply)".to_string(),
         tf::Value::String(value) => format!("{}", tera::to_value(value).unwrap()),
         tf::Value::Integer(value) => format!("{}", tera::to_value(value).unwrap()),
@@ -601,7 +602,7 @@ new: (known after apply)
 object:
   inner: (known after apply)
 same: 42
-sensitive: sensitive
+sensitive: sensitive (known after apply)
 string: (known after apply)"#;
             pretty_assertions::assert_eq!(result, expected);
         }
@@ -619,7 +620,7 @@ new: null -> (known after apply)
 object:
   inner: 42 -> (known after apply)
 same: 42
-sensitive: sensitive -> sensitive
+sensitive: sensitive -> sensitive (known after apply)
 string: "abc" -> (known after apply)"#;
             pretty_assertions::assert_eq!(result, expected);
         }
@@ -636,7 +637,7 @@ string: "abc" -> (known after apply)"#;
 new: null -> (known after apply)
 object:
   inner: 42 -> (known after apply)
-sensitive: sensitive -> sensitive
+sensitive: sensitive -> sensitive (known after apply)
 string: "abc" -> (known after apply)"#;
             pretty_assertions::assert_eq!(result, expected);
         }

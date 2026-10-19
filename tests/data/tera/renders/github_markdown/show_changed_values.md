@@ -131,8 +131,8 @@ No resource changes
 </summary>
 
 ```
-base64: sensitive -> sensitive
-hex: sensitive -> sensitive
+base64: sensitive -> sensitive (known after apply)
+hex: sensitive -> sensitive (known after apply)
 keepers: null
 length: 4 -> 8
 ```
@@ -146,8 +146,8 @@ length: 4 -> 8
 </summary>
 
 ```
-base64: sensitive -> sensitive
-hex: sensitive -> sensitive
+base64: sensitive -> sensitive (known after apply)
+hex: sensitive -> sensitive (known after apply)
 keepers: null
 length: 4 -> 8
 ```
