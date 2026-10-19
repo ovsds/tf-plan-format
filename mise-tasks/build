@@ -1,6 +1,0 @@
-#!/usr/bin/env bash
-#MISE description="Build project, arguments go to cargo build"
-set -euo pipefail
-
-echo 'Building project...'
-cargo build "$@"

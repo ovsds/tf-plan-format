@@ -12,7 +12,6 @@ on:
       - Cargo.lock
       - build/**
       - mise.toml
-      - mise-tasks/ci-image-scan
       - trivy.yaml
       - .github/actions/**
       - .github/workflows/release-pr.yaml

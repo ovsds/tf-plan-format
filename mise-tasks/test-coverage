@@ -1,5 +1,0 @@
-#!/usr/bin/env bash
-#MISE description="Test project with coverage"
-set -euo pipefail
-
-cargo llvm-cov test --fail-under-lines=97

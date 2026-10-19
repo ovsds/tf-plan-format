@@ -168,3 +168,24 @@ run = [
   "echo 'Configuring buildx...'",
   "docker buildx create --driver docker-container --use",
 ]
+
+[tasks.build]
+description = "Build project, arguments go to cargo build"
+run = ["echo 'Building project...'", "cargo build"]
+
+[tasks.run]
+description = "Run the CLI, arguments go to it"
+run = ["echo 'Running project...'", "cargo run --"]
+
+[tasks.test-coverage]
+description = "Test project with coverage"
+run = "cargo llvm-cov test --fail-under-lines=97"
+
+[tasks.test-coverage-html]
+description = "Open coverage report in browser"
+run = "cargo llvm-cov --open"
+
+[tasks.ci-image-scan]
+description = "Scan the IMAGE_REGISTRY/IMAGE_NAME:IMAGE_TAG image for vulnerabilities"
+env = { TRIVY_DISABLE_VEX_NOTICE = "true" }
+run = 'trivy image --config trivy.yaml "${IMAGE_REGISTRY:?}/${IMAGE_NAME:?}:${IMAGE_TAG:?}"'
