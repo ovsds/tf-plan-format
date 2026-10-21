@@ -251,14 +251,18 @@ fn render_changed_hashmap(
     indent_count: usize,
     show_changed_values: bool,
 ) -> Vec<String> {
-    let values = render_changed_hashmap_value(before, after, indent_count + 1, show_changed_values);
     // Without unchanged values an unchanged object has nothing under its key
-    if values.is_empty() && !show_changed_values {
+    if before == after && !show_changed_values {
         return Vec::new();
     }
     let mut result: Vec<String> = Vec::new();
     result.push(format!("{}{key}:", INDENT_STR.repeat(indent_count)));
-    result.extend(values);
+    result.extend(render_changed_hashmap_value(
+        before,
+        after,
+        indent_count + 1,
+        show_changed_values,
+    ));
     result
 }
 
