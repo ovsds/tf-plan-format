@@ -115,7 +115,7 @@ jobs:
 
       - name: Render test plans
         run: |
-          build/bin/linux-amd64/tf_plan_format github --file 'tests/data/plans/*/opentofu.tfplan.json' > "${RUNNER_TEMP}/rendered-plans.md"
+          build/bin/linux-amd64/tf_plan_format github --max-length 65000 --file 'tests/data/plans/*/opentofu.tfplan.json' > "${RUNNER_TEMP}/rendered-plans.md"
 
       # The PR's own binary renders the plans, so the comment shows how this change looks on GitHub
       - name: Comment rendered plans
