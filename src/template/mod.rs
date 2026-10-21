@@ -375,18 +375,18 @@ mod tests {
             // Both update-array plans hold the largest values: the tie goes to the one rendered first
             let collapsed = get_plan_section(&result, "update-array/opentofu.tfplan.json");
             assert!(collapsed.contains(&format!(
-                "<summary>🔄terraform_data.foo-bar\n</summary>\n\n{COLLAPSED}\n\n</details>"
+                "<summary>🔄 terraform_data.foo-bar\n</summary>\n\n{COLLAPSED}\n\n</details>"
             )));
             assert!(!collapsed.contains("```"));
             let kept = get_plan_section(&result, "update-array/terraform.tfplan.json");
             assert!(!kept.contains(COLLAPSED));
             assert_eq!(1, result.matches(COLLAPSED).count());
             assert_eq!(
-                "_Output limited to 5683 bytes: values of 1 change not shown_",
+                "_Output limited to 6257 bytes: values of 1 change not shown_",
                 get_note(&result)
             );
             assert!(result.ends_with(
-                "</details>\n\n_Output limited to 5683 bytes: values of 1 change not shown_\n"
+                "</details>\n\n_Output limited to 6257 bytes: values of 1 change not shown_\n"
             ));
         }
 
@@ -397,7 +397,7 @@ mod tests {
             let result = render_capped(&data, full.len() - 1);
 
             assert!(result.contains(&format!(
-                "<summary>✅🔄❌Outputs\n</summary>\n\n{COLLAPSED}\n\n</details>"
+                "<summary>✅🔄❌ Outputs\n</summary>\n\n{COLLAPSED}\n\n</details>"
             )));
             assert!(result.contains("```\ninput: \"foo\" -> \"bar\""));
             assert_eq!(1, result.matches(COLLAPSED).count());
@@ -413,15 +413,15 @@ mod tests {
         #[test]
         fn drops_last_plans() {
             let data = tf::tests::get_test_data();
-            let result = render_capped(&data, 2000);
+            let result = render_capped(&data, 2300);
 
-            assert!(result.len() <= 2000);
+            assert!(result.len() <= 2300);
             // The kept plans show again the values that fit once the last plans are dropped
             assert!(result.contains("```"));
             assert!(result.contains("no-resources/terraform.tfplan.json - "));
             assert!(!result.contains("outputs/opentofu.tfplan.json - "));
             assert_eq!(
-                "_Output limited to 2000 bytes: the last 10 plans and values of 5 changes not shown_",
+                "_Output limited to 2300 bytes: the last 10 plans and values of 5 changes not shown_",
                 get_note(&result)
             );
         }
@@ -436,7 +436,7 @@ mod tests {
             let result = render_capped(&data, full.len() - 1);
 
             assert!(result.contains(&format!(
-                "<summary>🔄terraform_data.foo-bar\n</summary>\n\n{COLLAPSED}\n\n</details>"
+                "<summary>🔄 terraform_data.foo-bar\n</summary>\n\n{COLLAPSED}\n\n</details>"
             )));
             assert_eq!(1, result.matches(COLLAPSED).count());
             assert_eq!(
@@ -472,7 +472,7 @@ mod tests {
             for max_length in (0..full.len()).step_by(10) {
                 let result = render_capped(&data, max_length);
                 let small_shown = result
-                    .contains("<summary>✅terraform_data.small\n</summary>\n\n```\na: \"b\"\n```");
+                    .contains("<summary>✅ terraform_data.small\n</summary>\n\n```\na: \"b\"\n```");
                 assert!(
                     small_shown || !result.contains("terraform_data.small"),
                     "{max_length}: {result}"

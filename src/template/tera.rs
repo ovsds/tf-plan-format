@@ -28,17 +28,19 @@ pub const GITHUB_MARKDOWN_TEMPLATE: &str = concat!("
 {%- set plan_index = loop.index0 %}
 {%- if plan_index < plan_count %}
 {%- set changes = plan.changes | filter_actions(exclude=options.hidden_actions) %}
-{%- set collapsed_changes = options.collapsed_changes[plan_index] | default(value=[]) %}<details>
-<summary>{{ render_actions(actions=changes | map(attribute=\"action\") | concat(with=plan.outputs.actions)) }}{{ plan.title }}
+{%- set collapsed_changes = options.collapsed_changes[plan_index] | default(value=[]) %}
+{%- set plan_actions = render_actions(actions=changes | map(attribute=\"action\") | concat(with=plan.outputs.actions)) %}<details>
+<summary>{{ plan_actions }}{% if plan_actions %} {% endif %}{{ plan.title }}
 {%- if plan.summary.add == 0 and plan.summary.change == 0 and plan.summary.destroy == 0 and not changes and not plan.outputs.actions %} - No changes
 {%- else %} - Plan: {{ plan.summary.add }} to add, {{ plan.summary.change }} to change, {{ plan.summary.destroy }} to destroy
 {%- endif %}</summary>
+<blockquote>
 {%- if not changes and not plan.outputs.actions %}
 No resource changes
 {%- else %}
 {%- for change in changes %}
 <details>
-<summary>{{ render_action(action=change.action) }}{{ change.address }}
+<summary>{{ render_action(action=change.action) }} {{ change.address }}
 </summary>
 
 {% if loop.index0 in collapsed_changes %}", collapsed_values!(), "{% else %}```
@@ -49,7 +51,7 @@ No resource changes
 {%- endfor %}
 {%- if plan.outputs.actions %}
 <details>
-<summary>{{ render_actions(actions=plan.outputs.actions) }}Outputs
+<summary>{{ render_actions(actions=plan.outputs.actions) }} Outputs
 </summary>
 
 {% if plan_index in collapsed_outputs %}", collapsed_values!(), "{% else %}```
@@ -59,6 +61,7 @@ No resource changes
 </details>
 {%- endif %}
 {%- endif %}
+</blockquote>
 </details>
 {% endif %}
 {%- endfor %}

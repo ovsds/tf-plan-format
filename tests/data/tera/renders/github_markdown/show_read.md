@@ -1,8 +1,9 @@
 <!-- tf-plan-format -->
 <details>
-<summary>✅create/opentofu.tfplan.json - Plan: 1 to add, 0 to change, 0 to destroy</summary>
+<summary>✅ create/opentofu.tfplan.json - Plan: 1 to add, 0 to change, 0 to destroy</summary>
+<blockquote>
 <details>
-<summary>✅terraform_data.foo-bar
+<summary>✅ terraform_data.foo-bar
 </summary>
 
 ```
@@ -13,11 +14,13 @@ triggers_replace: null
 ```
 
 </details>
+</blockquote>
 </details>
 <details>
-<summary>✅create/terraform.tfplan.json - Plan: 1 to add, 0 to change, 0 to destroy</summary>
+<summary>✅ create/terraform.tfplan.json - Plan: 1 to add, 0 to change, 0 to destroy</summary>
+<blockquote>
 <details>
-<summary>✅terraform_data.foo-bar
+<summary>✅ terraform_data.foo-bar
 </summary>
 
 ```
@@ -28,11 +31,13 @@ triggers_replace: null
 ```
 
 </details>
+</blockquote>
 </details>
 <details>
-<summary>♻️delete-create/opentofu.tfplan.json - Plan: 1 to add, 0 to change, 1 to destroy</summary>
+<summary>♻️ delete-create/opentofu.tfplan.json - Plan: 1 to add, 0 to change, 1 to destroy</summary>
+<blockquote>
 <details>
-<summary>♻️null_resource.foo-bar
+<summary>♻️ null_resource.foo-bar
 </summary>
 
 ```
@@ -42,11 +47,13 @@ triggers:
 ```
 
 </details>
+</blockquote>
 </details>
 <details>
-<summary>♻️delete-create/terraform.tfplan.json - Plan: 1 to add, 0 to change, 1 to destroy</summary>
+<summary>♻️ delete-create/terraform.tfplan.json - Plan: 1 to add, 0 to change, 1 to destroy</summary>
+<blockquote>
 <details>
-<summary>♻️null_resource.foo-bar
+<summary>♻️ null_resource.foo-bar
 </summary>
 
 ```
@@ -56,11 +63,13 @@ triggers:
 ```
 
 </details>
+</blockquote>
 </details>
 <details>
-<summary>❌delete/opentofu.tfplan.json - Plan: 0 to add, 0 to change, 1 to destroy</summary>
+<summary>❌ delete/opentofu.tfplan.json - Plan: 0 to add, 0 to change, 1 to destroy</summary>
+<blockquote>
 <details>
-<summary>❌terraform_data.foo-bar
+<summary>❌ terraform_data.foo-bar
 </summary>
 
 ```
@@ -71,11 +80,13 @@ triggers_replace: null
 ```
 
 </details>
+</blockquote>
 </details>
 <details>
-<summary>❌delete/terraform.tfplan.json - Plan: 0 to add, 0 to change, 1 to destroy</summary>
+<summary>❌ delete/terraform.tfplan.json - Plan: 0 to add, 0 to change, 1 to destroy</summary>
+<blockquote>
 <details>
-<summary>❌terraform_data.foo-bar
+<summary>❌ terraform_data.foo-bar
 </summary>
 
 ```
@@ -86,27 +97,37 @@ triggers_replace: null
 ```
 
 </details>
+</blockquote>
 </details>
 <details>
 <summary>no-op/opentofu.tfplan.json - No changes</summary>
+<blockquote>
 No resource changes
+</blockquote>
 </details>
 <details>
 <summary>no-op/terraform.tfplan.json - No changes</summary>
+<blockquote>
 No resource changes
+</blockquote>
 </details>
 <details>
 <summary>no-resources/opentofu.tfplan.json - No changes</summary>
+<blockquote>
 No resource changes
+</blockquote>
 </details>
 <details>
 <summary>no-resources/terraform.tfplan.json - No changes</summary>
+<blockquote>
 No resource changes
+</blockquote>
 </details>
 <details>
-<summary>✅🔄❌outputs/opentofu.tfplan.json - Plan: 0 to add, 1 to change, 0 to destroy</summary>
+<summary>✅🔄❌ outputs/opentofu.tfplan.json - Plan: 0 to add, 1 to change, 0 to destroy</summary>
+<blockquote>
 <details>
-<summary>🔄terraform_data.foo-bar
+<summary>🔄 terraform_data.foo-bar
 </summary>
 
 ```
@@ -116,7 +137,7 @@ output: "foo" -> (known after apply)
 
 </details>
 <details>
-<summary>✅🔄❌Outputs
+<summary>✅🔄❌ Outputs
 </summary>
 
 ```
@@ -128,11 +149,13 @@ unknown: "foo" -> (known after apply)
 ```
 
 </details>
+</blockquote>
 </details>
 <details>
-<summary>✅🔄❌outputs/terraform.tfplan.json - Plan: 0 to add, 1 to change, 0 to destroy</summary>
+<summary>✅🔄❌ outputs/terraform.tfplan.json - Plan: 0 to add, 1 to change, 0 to destroy</summary>
+<blockquote>
 <details>
-<summary>🔄terraform_data.foo-bar
+<summary>🔄 terraform_data.foo-bar
 </summary>
 
 ```
@@ -142,7 +165,7 @@ output: "foo" -> (known after apply)
 
 </details>
 <details>
-<summary>✅🔄❌Outputs
+<summary>✅🔄❌ Outputs
 </summary>
 
 ```
@@ -154,11 +177,13 @@ unknown: "foo" -> (known after apply)
 ```
 
 </details>
+</blockquote>
 </details>
 <details>
-<summary>🔍🔄read/opentofu.tfplan.json - Plan: 0 to add, 1 to change, 0 to destroy</summary>
+<summary>🔍🔄 read/opentofu.tfplan.json - Plan: 0 to add, 1 to change, 0 to destroy</summary>
+<blockquote>
 <details>
-<summary>🔍data.terraform_remote_state.foo-bar
+<summary>🔍 data.terraform_remote_state.foo-bar
 </summary>
 
 ```
@@ -173,7 +198,7 @@ workspace: null
 
 </details>
 <details>
-<summary>🔄terraform_data.foo-bar
+<summary>🔄 terraform_data.foo-bar
 </summary>
 
 ```
@@ -182,11 +207,13 @@ output: "foo" -> (known after apply)
 ```
 
 </details>
+</blockquote>
 </details>
 <details>
-<summary>🔍🔄read/terraform.tfplan.json - Plan: 0 to add, 1 to change, 0 to destroy</summary>
+<summary>🔍🔄 read/terraform.tfplan.json - Plan: 0 to add, 1 to change, 0 to destroy</summary>
+<blockquote>
 <details>
-<summary>🔍data.terraform_remote_state.foo-bar
+<summary>🔍 data.terraform_remote_state.foo-bar
 </summary>
 
 ```
@@ -201,7 +228,7 @@ workspace: null
 
 </details>
 <details>
-<summary>🔄terraform_data.foo-bar
+<summary>🔄 terraform_data.foo-bar
 </summary>
 
 ```
@@ -210,11 +237,13 @@ output: "foo" -> (known after apply)
 ```
 
 </details>
+</blockquote>
 </details>
 <details>
-<summary>♻️sensitive/opentofu.tfplan.json - Plan: 1 to add, 0 to change, 1 to destroy</summary>
+<summary>♻️ sensitive/opentofu.tfplan.json - Plan: 1 to add, 0 to change, 1 to destroy</summary>
+<blockquote>
 <details>
-<summary>♻️random_bytes.test
+<summary>♻️ random_bytes.test
 </summary>
 
 ```
@@ -224,11 +253,13 @@ length: 4 -> 8
 ```
 
 </details>
+</blockquote>
 </details>
 <details>
-<summary>♻️sensitive/terraform.tfplan.json - Plan: 1 to add, 0 to change, 1 to destroy</summary>
+<summary>♻️ sensitive/terraform.tfplan.json - Plan: 1 to add, 0 to change, 1 to destroy</summary>
+<blockquote>
 <details>
-<summary>♻️random_bytes.test
+<summary>♻️ random_bytes.test
 </summary>
 
 ```
@@ -238,11 +269,13 @@ length: 4 -> 8
 ```
 
 </details>
+</blockquote>
 </details>
 <details>
-<summary>🔄update-array/opentofu.tfplan.json - Plan: 0 to add, 1 to change, 0 to destroy</summary>
+<summary>🔄 update-array/opentofu.tfplan.json - Plan: 0 to add, 1 to change, 0 to destroy</summary>
+<blockquote>
 <details>
-<summary>🔄terraform_data.foo-bar
+<summary>🔄 terraform_data.foo-bar
 </summary>
 
 ```
@@ -259,11 +292,13 @@ output: {names: ["a", "b", "c"], ports: [{name: "http", port: 80}, {name: "ssh",
 ```
 
 </details>
+</blockquote>
 </details>
 <details>
-<summary>🔄update-array/terraform.tfplan.json - Plan: 0 to add, 1 to change, 0 to destroy</summary>
+<summary>🔄 update-array/terraform.tfplan.json - Plan: 0 to add, 1 to change, 0 to destroy</summary>
+<blockquote>
 <details>
-<summary>🔄terraform_data.foo-bar
+<summary>🔄 terraform_data.foo-bar
 </summary>
 
 ```
@@ -280,11 +315,13 @@ output: {names: ["a", "b", "c"], ports: [{name: "http", port: 80}, {name: "ssh",
 ```
 
 </details>
+</blockquote>
 </details>
 <details>
-<summary>🔄update/opentofu.tfplan.json - Plan: 0 to add, 1 to change, 0 to destroy</summary>
+<summary>🔄 update/opentofu.tfplan.json - Plan: 0 to add, 1 to change, 0 to destroy</summary>
+<blockquote>
 <details>
-<summary>🔄terraform_data.foo-bar
+<summary>🔄 terraform_data.foo-bar
 </summary>
 
 ```
@@ -293,11 +330,13 @@ output: "foo" -> (known after apply)
 ```
 
 </details>
+</blockquote>
 </details>
 <details>
-<summary>🔄update/terraform.tfplan.json - Plan: 0 to add, 1 to change, 0 to destroy</summary>
+<summary>🔄 update/terraform.tfplan.json - Plan: 0 to add, 1 to change, 0 to destroy</summary>
+<blockquote>
 <details>
-<summary>🔄terraform_data.foo-bar
+<summary>🔄 terraform_data.foo-bar
 </summary>
 
 ```
@@ -306,4 +345,5 @@ output: "foo" -> (known after apply)
 ```
 
 </details>
+</blockquote>
 </details>

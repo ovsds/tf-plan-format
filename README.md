@@ -86,9 +86,10 @@ tf_plan_format github --file tests/data/plans/outputs/opentofu.tfplan.json
 ````markdown
 <!-- tf-plan-format -->
 <details>
-<summary>✅🔄❌outputs - Plan: 0 to add, 1 to change, 0 to destroy</summary>
+<summary>✅🔄❌ outputs - Plan: 0 to add, 1 to change, 0 to destroy</summary>
+<blockquote>
 <details>
-<summary>🔄terraform_data.foo-bar
+<summary>🔄 terraform_data.foo-bar
 </summary>
 
 ```
@@ -98,7 +99,7 @@ output: "foo" -> (known after apply)
 
 </details>
 <details>
-<summary>✅🔄❌Outputs
+<summary>✅🔄❌ Outputs
 </summary>
 
 ```
@@ -110,6 +111,7 @@ unknown: "foo" -> (known after apply)
 ```
 
 </details>
+</blockquote>
 </details>
 ````
 
