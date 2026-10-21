@@ -13,6 +13,7 @@ on:
       - build/**
       - mise.toml
       - trivy.yaml
+      - tests/data/plans/**
       - .github/actions/**
       - .github/workflows/release-pr.yaml
 
@@ -111,3 +112,15 @@ jobs:
               - Image Tag: `${{ steps.get-image-data.outputs.image-tag }}`
           unique-body-includes: |
             Build Artifacts:
+
+      - name: Render test plans
+        run: |
+          build/bin/linux-amd64/tf_plan_format github --file 'tests/data/plans/*/opentofu.tfplan.json' > "${RUNNER_TEMP}/rendered-plans.md"
+
+      # The PR's own binary renders the plans, so the comment shows how this change looks on GitHub
+      - name: Comment rendered plans
+        uses: ovsds/create-or-update-unique-comment-action@df30f5f96aa71679deb9eb697c98f39ee9e26651 # v1.1.0
+        with:
+          issue-number: ${{ github.event.number }}
+          body-path: ${{ runner.temp }}/rendered-plans.md
+          unique-body-includes: "<!-- tf-plan-format -->"
