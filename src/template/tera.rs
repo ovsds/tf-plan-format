@@ -24,16 +24,17 @@ pub const GITHUB_MARKDOWN_TEMPLATE: &str = concat!("
 {%- set plan_count = options.plan_count | default(value=data.plans | length) %}
 {%- set collapsed_outputs = options.collapsed_outputs | default(value=[]) -%}
 <!-- tf-plan-format -->
-{% for plan_key, plan in data.plans %}
+{% set_global unchanged_titles = [] %}
+{%- for plan_key, plan in data.plans %}
 {%- set plan_index = loop.index0 %}
 {%- if plan_index < plan_count %}
 {%- set changes = plan.changes | filter_actions(exclude=options.hidden_actions) %}
+{%- if plan.summary.add == 0 and plan.summary.change == 0 and plan.summary.destroy == 0 and not changes and not plan.outputs.actions %}
+{%- set_global unchanged_titles = unchanged_titles | concat(with=plan.title) %}
+{%- else %}
 {%- set collapsed_changes = options.collapsed_changes[plan_index] | default(value=[]) %}
 {%- set plan_actions = render_actions(actions=changes | map(attribute=\"action\") | concat(with=plan.outputs.actions)) %}<details>
-<summary>{{ plan_actions }}{% if plan_actions %} {% endif %}<b>{{ plan.title }}</b>
-{%- if plan.summary.add == 0 and plan.summary.change == 0 and plan.summary.destroy == 0 and not changes and not plan.outputs.actions %} - No changes
-{%- else %} - Plan: {{ plan.summary.add }} to add, {{ plan.summary.change }} to change, {{ plan.summary.destroy }} to destroy
-{%- endif %}</summary>
+<summary>{{ plan_actions }}{% if plan_actions %} {% endif %}<b>{{ plan.title }}</b> +{{ plan.summary.add }} ~{{ plan.summary.change }} −{{ plan.summary.destroy }}</summary>
 <blockquote>
 {%- if not changes and not plan.outputs.actions %}
 No resource changes
@@ -67,8 +68,17 @@ No resource changes
 {%- endif %}
 </blockquote>
 </details>
-{% endif %}
+{% endif %}{% endif %}
 {%- endfor %}
+{%- if unchanged_titles %}<details>
+<summary>💤 No changes ({{ unchanged_titles | length }})</summary>
+<blockquote>
+{%- for title in unchanged_titles %}
+<div>💤 <b>{{ title }}</b></div>
+{%- endfor %}
+</blockquote>
+</details>
+{% endif %}
 {%- if options.note is defined %}{% if plan_count > 0 %}
 {% endif %}_{{ options.note }}_
 {% endif %}");

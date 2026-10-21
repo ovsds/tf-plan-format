@@ -63,9 +63,10 @@ Actions are shown as icons: ✅ create, ♻️ replace (delete and create), 🔍
 Renders GitHub markdown for a PR comment:
 
 - a hidden `<!-- tf-plan-format -->` first line (from 0.2.0), to find the comment again when updating it;
-- one collapsible block per plan, titled from its path: the file name is dropped when all plans share it, then the leading directories all plans share, so `plans/prod/plan.json` and `plans/stage/plan.json` become `prod` and `stage`, and a single `infra/plan.json` becomes `infra`;
-- the block's summary shows the icons of the changes it shows and of its output changes, the title in bold (from 0.3.0) and `Plan: X to add, Y to change, Z to destroy`, or `No changes`;
-- inside, in a `<blockquote>` that indents them under the plan (from 0.3.0), a collapsible block per resource change with its address as code (from 0.3.0) and its values, or `No value changes` when none are shown (from 0.3.0), and an `Outputs` block when outputs change.
+- one collapsible block per plan with changes, titled from its path: the file name is dropped when all plans share it, then the leading directories all plans share, so `plans/prod/plan.json` and `plans/stage/plan.json` become `prod` and `stage`, and a single `infra/plan.json` becomes `infra`;
+- the block's summary shows the icons of the changes it shows and of its output changes, the title in bold and the counts as `+X ~Y −Z` (to add, change, destroy; both from 0.3.0);
+- inside, in a `<blockquote>` that indents them under the plan (from 0.3.0), a collapsible block per resource change with its address as code (from 0.3.0) and its values, or `No value changes` when none are shown (from 0.3.0), and an `Outputs` block when outputs change;
+- last, plans without changes in one collapsible `💤 No changes (N)` block, a line each (from 0.3.0; before, each had its own block titled `No changes`).
 
 Sensitive values are shown as `sensitive`, `sensitive (changed)` or `sensitive (known after apply)`, values known only after apply as `(known after apply)`.
 
@@ -86,7 +87,7 @@ tf_plan_format github --file tests/data/plans/outputs/opentofu.tfplan.json
 ````markdown
 <!-- tf-plan-format -->
 <details>
-<summary>✅🔄❌ <b>outputs</b> - Plan: 0 to add, 1 to change, 0 to destroy</summary>
+<summary>✅🔄❌ <b>outputs</b> +0 ~1 −0</summary>
 <blockquote>
 <details>
 <summary>🔄 <code>terraform_data.foo-bar</code>

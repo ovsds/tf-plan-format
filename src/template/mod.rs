@@ -339,9 +339,9 @@ mod tests {
         }
 
         fn get_plan_section<'a>(result: &'a str, title: &str) -> &'a str {
-            let start = result.find(&format!("<b>{title}</b> - ")).unwrap() + "<b>".len();
+            let start = result.find(&format!("<b>{title}</b> ")).unwrap() + "<b>".len();
             let end = result[start + title.len()..]
-                .find(".tfplan.json</b> - ")
+                .find(".tfplan.json</b> ")
                 .map_or(result.len(), |end| start + title.len() + end);
             &result[start..end]
         }
@@ -356,6 +356,26 @@ mod tests {
             let result = render_github(&data, false, false, false, None).unwrap();
 
             pretty_assertions::assert_eq!(get_expected_default(), result);
+        }
+
+        #[test]
+        fn groups_plans_without_changes() {
+            let data = tf::Data::new(std::collections::BTreeMap::from([
+                (
+                    "a/plan.json".to_string(),
+                    get_plan(tf::tests::PlanType::NoResources),
+                ),
+                (
+                    "b/plan.json".to_string(),
+                    get_plan(tf::tests::PlanType::NoOp),
+                ),
+            ]));
+            let result = render_github(&data, false, false, false, None).unwrap();
+
+            pretty_assertions::assert_eq!(
+                "<!-- tf-plan-format -->\n<details>\n<summary>💤 No changes (2)</summary>\n<blockquote>\n<div>💤 <b>a</b></div>\n<div>💤 <b>b</b></div>\n</blockquote>\n</details>\n",
+                result
+            );
         }
 
         #[test]
@@ -382,11 +402,11 @@ mod tests {
             assert!(!kept.contains(COLLAPSED));
             assert_eq!(1, result.matches(COLLAPSED).count());
             assert_eq!(
-                "_Output limited to 6605 bytes: values of 1 change not shown_",
+                "_Output limited to 5828 bytes: values of 1 change not shown_",
                 get_note(&result)
             );
             assert!(result.ends_with(
-                "</details>\n\n_Output limited to 6605 bytes: values of 1 change not shown_\n"
+                "</details>\n\n_Output limited to 5828 bytes: values of 1 change not shown_\n"
             ));
         }
 
@@ -413,15 +433,15 @@ mod tests {
         #[test]
         fn drops_last_plans() {
             let data = tf::tests::get_test_data();
-            let result = render_capped(&data, 2400);
+            let result = render_capped(&data, 2000);
 
-            assert!(result.len() <= 2400);
+            assert!(result.len() <= 2000);
             // The kept plans show again the values that fit once the last plans are dropped
             assert!(result.contains("```"));
-            assert!(result.contains("no-resources/terraform.tfplan.json</b> - "));
-            assert!(!result.contains("outputs/opentofu.tfplan.json</b> - "));
+            assert!(result.contains("<b>no-resources/terraform.tfplan.json</b>"));
+            assert!(!result.contains("<b>outputs/opentofu.tfplan.json</b>"));
             assert_eq!(
-                "_Output limited to 2400 bytes: the last 10 plans and values of 5 changes not shown_",
+                "_Output limited to 2000 bytes: the last 10 plans and values of 5 changes not shown_",
                 get_note(&result)
             );
         }
