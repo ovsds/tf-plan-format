@@ -56,7 +56,7 @@ terraform plan -out=plan.tfplan && terraform show -json plan.tfplan > plan.json
 
 Both commands read plans with `-f`, `--file`: a path or a glob (quote it so the tool expands it). Repeat the flag or pass several values to read several plans; they are rendered in path order. Without `--file` there is nothing to render: `github` prints only its marker line and an empty line, and `custom` gets no plans. A path or glob that matches no file, a file that cannot be read, or JSON that does not have the shape of a plan fails the command with exit code 65. Pass the output of `show -json` on a plan file: `show -json` on the state is read as a plan without changes.
 
-Actions are shown as icons: ✅ create, ♻️ replace (delete and create), 🔍 read, 🔄 update, ❌ delete, 💤 no-op, ❓ unknown.
+Actions are shown as icons: ✅ create, ♻️ replace (delete and create), 🔍 read, 🔄 update, ❌ delete, 💤 no-op (🟰 before 0.3.0), ❓ unknown.
 
 ### `github`
 
@@ -65,7 +65,7 @@ Renders GitHub markdown for a PR comment:
 - a hidden `<!-- tf-plan-format -->` first line (from 0.2.0), to find the comment again when updating it;
 - one collapsible block per plan, titled from its path: the file name is dropped when all plans share it, then the leading directories all plans share, so `plans/prod/plan.json` and `plans/stage/plan.json` become `prod` and `stage`, and a single `infra/plan.json` becomes `infra`;
 - the block's summary shows the icons of the changes it shows and of its output changes, the title in bold (from 0.3.0) and `Plan: X to add, Y to change, Z to destroy`, or `No changes`;
-- inside, in a `<blockquote>` that indents them under the plan (from 0.3.0), a collapsible block per resource change with its address as code (from 0.3.0) and its values, and an `Outputs` block when outputs change.
+- inside, in a `<blockquote>` that indents them under the plan (from 0.3.0), a collapsible block per resource change with its address as code (from 0.3.0) and its values, or `No value changes` when none are shown (from 0.3.0), and an `Outputs` block when outputs change.
 
 Sensitive values are shown as `sensitive`, `sensitive (changed)` or `sensitive (known after apply)`, values known only after apply as `(known after apply)`.
 

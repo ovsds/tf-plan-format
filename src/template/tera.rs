@@ -251,14 +251,14 @@ fn render_changed_hashmap(
     indent_count: usize,
     show_changed_values: bool,
 ) -> Vec<String> {
+    let values = render_changed_hashmap_value(before, after, indent_count + 1, show_changed_values);
+    // Without unchanged values an unchanged object has nothing under its key
+    if values.is_empty() && !show_changed_values {
+        return Vec::new();
+    }
     let mut result: Vec<String> = Vec::new();
     result.push(format!("{}{key}:", INDENT_STR.repeat(indent_count)));
-    result.extend(render_changed_hashmap_value(
-        before,
-        after,
-        indent_count + 1,
-        show_changed_values,
-    ));
+    result.extend(values);
     result
 }
 
@@ -1038,6 +1038,22 @@ object:
 sensitive: sensitive -> sensitive (known after apply)
 string: "abc" -> (known after apply)"#;
             pretty_assertions::assert_eq!(result, expected);
+        }
+
+        #[test]
+        fn object_unchanged_hide_unchanged() {
+            let object = tf::Value::Object(std::collections::HashMap::from([(
+                "env".to_string(),
+                tf::Value::String("prod".to_string()),
+            )]));
+            let values = std::collections::HashMap::from([("tags".to_string(), object)]);
+
+            let hidden =
+                test_show_changed_values(Some(values.clone()), Some(values.clone()), false);
+            pretty_assertions::assert_eq!(hidden, "");
+
+            let shown = test_show_changed_values(Some(values.clone()), Some(values), true);
+            pretty_assertions::assert_eq!(shown, "tags:\n  env: \"prod\"");
         }
 
         fn test_array(
