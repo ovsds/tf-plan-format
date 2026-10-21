@@ -43,9 +43,11 @@ No resource changes
 <summary>{{ render_action(action=change.action) }} <code>{{ change.address }}</code>
 </summary>
 
-{% if loop.index0 in collapsed_changes %}", collapsed_values!(), "{% else %}```
-{{ render_values(before=change.before, after=change.after, show_changed_values=options.show_changed_values) }}
-```{% endif %}
+{% if loop.index0 in collapsed_changes %}", collapsed_values!(), "{% else %}
+{%- set values = render_values(before=change.before, after=change.after, show_changed_values=options.show_changed_values) %}
+{%- if values %}```
+{{ values }}
+```{% else %}_No value changes_{% endif %}{% endif %}
 
 </details>
 {%- endfor %}
@@ -54,9 +56,11 @@ No resource changes
 <summary>{{ render_actions(actions=plan.outputs.actions) }} Outputs
 </summary>
 
-{% if plan_index in collapsed_outputs %}", collapsed_values!(), "{% else %}```
-{{ render_values(before=plan.outputs.before, after=plan.outputs.after, show_changed_values=options.show_changed_values) }}
-```{% endif %}
+{% if plan_index in collapsed_outputs %}", collapsed_values!(), "{% else %}
+{%- set values = render_values(before=plan.outputs.before, after=plan.outputs.after, show_changed_values=options.show_changed_values) %}
+{%- if values %}```
+{{ values }}
+```{% else %}_No value changes_{% endif %}{% endif %}
 
 </details>
 {%- endif %}
@@ -78,7 +82,7 @@ fn render_action(action: &tf::Action) -> String {
         tf::Action::Delete => "❌".to_string(),
         tf::Action::DeleteCreate => "♻️".to_string(),
         tf::Action::Update => "🔄".to_string(),
-        tf::Action::NoOp => "🟰".to_string(),
+        tf::Action::NoOp => "💤".to_string(),
         tf::Action::Read => "🔍".to_string(),
         tf::Action::Unknown => "❓".to_string(),
     }
@@ -603,7 +607,7 @@ mod tests {
             assert_eq!(test(tf::Action::Delete).unwrap(), "❌");
             assert_eq!(test(tf::Action::DeleteCreate).unwrap(), "♻️");
             assert_eq!(test(tf::Action::Update).unwrap(), "🔄");
-            assert_eq!(test(tf::Action::NoOp).unwrap(), "🟰");
+            assert_eq!(test(tf::Action::NoOp).unwrap(), "💤");
             assert_eq!(test(tf::Action::Read).unwrap(), "🔍");
             assert_eq!(test(tf::Action::Unknown).unwrap(), "❓");
         }
@@ -660,7 +664,7 @@ mod tests {
                 tf::Action::Read,
                 tf::Action::Unknown,
             ];
-            assert_eq!(test(actions).unwrap(), "✅♻\u{fe0f}🔍🔄❌🟰❓");
+            assert_eq!(test(actions).unwrap(), "✅♻\u{fe0f}🔍🔄❌💤❓");
         }
 
         #[test]

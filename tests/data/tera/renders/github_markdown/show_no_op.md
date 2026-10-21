@@ -100,29 +100,25 @@ triggers_replace: null
 </blockquote>
 </details>
 <details>
-<summary>🟰 <b>no-op/opentofu.tfplan.json</b> - Plan: 0 to add, 0 to change, 0 to destroy</summary>
+<summary>💤 <b>no-op/opentofu.tfplan.json</b> - Plan: 0 to add, 0 to change, 0 to destroy</summary>
 <blockquote>
 <details>
-<summary>🟰 <code>terraform_data.foo-bar</code>
+<summary>💤 <code>terraform_data.foo-bar</code>
 </summary>
 
-```
-
-```
+_No value changes_
 
 </details>
 </blockquote>
 </details>
 <details>
-<summary>🟰 <b>no-op/terraform.tfplan.json</b> - Plan: 0 to add, 0 to change, 0 to destroy</summary>
+<summary>💤 <b>no-op/terraform.tfplan.json</b> - Plan: 0 to add, 0 to change, 0 to destroy</summary>
 <blockquote>
 <details>
-<summary>🟰 <code>terraform_data.foo-bar</code>
+<summary>💤 <code>terraform_data.foo-bar</code>
 </summary>
 
-```
-
-```
+_No value changes_
 
 </details>
 </blockquote>

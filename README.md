@@ -56,7 +56,7 @@ terraform plan -out=plan.tfplan && terraform show -json plan.tfplan > plan.json
 
 Both commands read plans with `-f`, `--file`: a path or a glob (quote it so the tool expands it). Repeat the flag or pass several values to read several plans; they are rendered in path order. Without `--file` there is nothing to render: `github` prints only its marker line and an empty line, and `custom` gets no plans. A path or glob that matches no file, a file that cannot be read, or JSON that does not have the shape of a plan fails the command with exit code 65. Pass the output of `show -json` on a plan file: `show -json` on the state is read as a plan without changes.
 
-Actions are shown as icons: ✅ create, ♻️ replace (delete and create), 🔍 read, 🔄 update, ❌ delete, 🟰 no-op, ❓ unknown.
+Actions are shown as icons: ✅ create, ♻️ replace (delete and create), 🔍 read, 🔄 update, ❌ delete, 💤 no-op, ❓ unknown.
 
 ### `github`
 
