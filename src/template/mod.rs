@@ -67,7 +67,8 @@ pub fn render_github(
         return Ok(result);
     };
 
-    let blocks = get_values_blocks(data, &hidden_actions, show_changed_values);
+    let plan_order = get_plan_order(data, &hidden_actions);
+    let blocks = get_values_blocks(data, &plan_order, &hidden_actions, show_changed_values);
     let mut limits = Limits::new(max_length, data.plans.len());
     result = collapse_until_fits(&mut limits, &blocks, result, |limits| render(Some(limits)))?;
     if result.len() > max_length {
@@ -144,19 +145,40 @@ struct ValuesBlock {
     saving: usize,
 }
 
+fn get_shown_changes<'a>(
+    plan: &'a tf::Plan,
+    hidden_actions: &'a [tf::Action],
+) -> impl Iterator<Item = &'a tf::Change> {
+    plan.changes
+        .iter()
+        .filter(|change| tera::keeps_action(&change.action, hidden_actions, false))
+}
+
+/// The keys of the plans in render order: those with changes first, then those without, each in path order, so
+/// dropping the last plans drops the plans without changes first
+fn get_plan_order(data: &tf::Data, hidden_actions: &[tf::Action]) -> Vec<String> {
+    let (changed, unchanged): (Vec<_>, Vec<_>) = data.plans.iter().partition(|(_, plan)| {
+        get_shown_changes(plan, hidden_actions).next().is_some() || !plan.outputs.actions.is_empty()
+    });
+    changed
+        .into_iter()
+        .chain(unchanged)
+        .map(|(key, _)| key.clone())
+        .collect()
+}
+
 /// Values blocks the github template renders that collapsing shortens, largest saving first, ties in render
 /// order
 fn get_values_blocks(
     data: &tf::Data,
+    plan_order: &[String],
     hidden_actions: &[tf::Action],
     show_changed_values: bool,
 ) -> Vec<ValuesBlock> {
     let mut blocks = Vec::new();
-    for (plan_index, plan) in data.plans.values().enumerate() {
-        let changes = plan
-            .changes
-            .iter()
-            .filter(|change| tera::keeps_action(&change.action, hidden_actions, false))
+    for (plan_index, key) in plan_order.iter().enumerate() {
+        let plan = &data.plans[key];
+        let changes = get_shown_changes(plan, hidden_actions)
             .enumerate()
             .map(|(index, change)| {
                 let kind = ValuesBlockKind::Change(index);
@@ -339,9 +361,9 @@ mod tests {
         }
 
         fn get_plan_section<'a>(result: &'a str, title: &str) -> &'a str {
-            let start = result.find(&format!("{title} - ")).unwrap();
+            let start = result.find(&format!("<b>{title}</b> ")).unwrap() + "<b>".len();
             let end = result[start + title.len()..]
-                .find(".tfplan.json - ")
+                .find(".tfplan.json</b> ")
                 .map_or(result.len(), |end| start + title.len() + end);
             &result[start..end]
         }
@@ -356,6 +378,26 @@ mod tests {
             let result = render_github(&data, false, false, false, None).unwrap();
 
             pretty_assertions::assert_eq!(get_expected_default(), result);
+        }
+
+        #[test]
+        fn groups_plans_without_changes() {
+            let data = tf::Data::new(std::collections::BTreeMap::from([
+                (
+                    "a/plan.json".to_string(),
+                    get_plan(tf::tests::PlanType::NoResources),
+                ),
+                (
+                    "b/plan.json".to_string(),
+                    get_plan(tf::tests::PlanType::NoOp),
+                ),
+            ]));
+            let result = render_github(&data, false, false, false, None).unwrap();
+
+            pretty_assertions::assert_eq!(
+                "<!-- tf-plan-format -->\n<details>\n<summary>💤 No changes (2)</summary>\n<blockquote>\n<div>💤 <b>a</b></div>\n<div>💤 <b>b</b></div>\n</blockquote>\n</details>\n",
+                result
+            );
         }
 
         #[test]
@@ -375,18 +417,18 @@ mod tests {
             // Both update-array plans hold the largest values: the tie goes to the one rendered first
             let collapsed = get_plan_section(&result, "update-array/opentofu.tfplan.json");
             assert!(collapsed.contains(&format!(
-                "<summary>🔄terraform_data.foo-bar\n</summary>\n\n{COLLAPSED}\n\n</details>"
+                "<summary>🔄 <code>terraform_data.foo-bar</code>\n</summary>\n\n{COLLAPSED}\n\n</details>"
             )));
             assert!(!collapsed.contains("```"));
             let kept = get_plan_section(&result, "update-array/terraform.tfplan.json");
             assert!(!kept.contains(COLLAPSED));
             assert_eq!(1, result.matches(COLLAPSED).count());
             assert_eq!(
-                "_Output limited to 5683 bytes: values of 1 change not shown_",
+                "_Output limited to 5828 bytes: values of 1 change not shown_",
                 get_note(&result)
             );
             assert!(result.ends_with(
-                "</details>\n\n_Output limited to 5683 bytes: values of 1 change not shown_\n"
+                "</details>\n\n_Output limited to 5828 bytes: values of 1 change not shown_\n"
             ));
         }
 
@@ -397,7 +439,7 @@ mod tests {
             let result = render_capped(&data, full.len() - 1);
 
             assert!(result.contains(&format!(
-                "<summary>✅🔄❌Outputs\n</summary>\n\n{COLLAPSED}\n\n</details>"
+                "<summary>✅🔄❌ Outputs\n</summary>\n\n{COLLAPSED}\n\n</details>"
             )));
             assert!(result.contains("```\ninput: \"foo\" -> \"bar\""));
             assert_eq!(1, result.matches(COLLAPSED).count());
@@ -413,15 +455,17 @@ mod tests {
         #[test]
         fn drops_last_plans() {
             let data = tf::tests::get_test_data();
-            let result = render_capped(&data, 2000);
+            let result = render_capped(&data, 2900);
 
-            assert!(result.len() <= 2000);
+            assert!(result.len() <= 2900);
             // The kept plans show again the values that fit once the last plans are dropped
             assert!(result.contains("```"));
-            assert!(result.contains("no-resources/terraform.tfplan.json - "));
-            assert!(!result.contains("outputs/opentofu.tfplan.json - "));
+            // The plans without changes render last, so they are dropped first
+            assert!(!result.contains("No changes ("));
+            assert!(result.contains("<b>read/terraform.tfplan.json</b>"));
+            assert!(!result.contains("<b>sensitive/opentofu.tfplan.json</b>"));
             assert_eq!(
-                "_Output limited to 2000 bytes: the last 10 plans and values of 5 changes not shown_",
+                "_Output limited to 2900 bytes: the last 10 plans, values of 7 changes and outputs of 2 plans not shown_",
                 get_note(&result)
             );
         }
@@ -436,7 +480,7 @@ mod tests {
             let result = render_capped(&data, full.len() - 1);
 
             assert!(result.contains(&format!(
-                "<summary>🔄terraform_data.foo-bar\n</summary>\n\n{COLLAPSED}\n\n</details>"
+                "<summary>🔄 <code>terraform_data.foo-bar</code>\n</summary>\n\n{COLLAPSED}\n\n</details>"
             )));
             assert_eq!(1, result.matches(COLLAPSED).count());
             assert_eq!(
@@ -465,14 +509,17 @@ mod tests {
                     get_plan(tf::tests::PlanType::UpdateArray),
                 ),
             ]));
-            assert_eq!(2, get_values_blocks(&data, &[], false).len());
+            assert_eq!(
+                2,
+                get_values_blocks(&data, &get_plan_order(&data, &[]), &[], false).len()
+            );
 
             let full = render_github(&data, false, false, false, None).unwrap();
             let mut dropped_with_small_shown = 0;
             for max_length in (0..full.len()).step_by(10) {
                 let result = render_capped(&data, max_length);
                 let small_shown = result
-                    .contains("<summary>✅terraform_data.small\n</summary>\n\n```\na: \"b\"\n```");
+                    .contains("<summary>✅ <code>terraform_data.small</code>\n</summary>\n\n```\na: \"b\"\n```");
                 assert!(
                     small_shown || !result.contains("terraform_data.small"),
                     "{max_length}: {result}"
@@ -520,6 +567,11 @@ mod tests {
                     assert_eq!(
                         result.matches("<details>").count(),
                         result.matches("</details>").count(),
+                        "{max_length}: {result}"
+                    );
+                    assert_eq!(
+                        result.matches("<blockquote>").count(),
+                        result.matches("</blockquote>").count(),
                         "{max_length}: {result}"
                     );
                     assert_eq!(

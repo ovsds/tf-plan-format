@@ -56,16 +56,17 @@ terraform plan -out=plan.tfplan && terraform show -json plan.tfplan > plan.json
 
 Both commands read plans with `-f`, `--file`: a path or a glob (quote it so the tool expands it). Repeat the flag or pass several values to read several plans; they are rendered in path order. Without `--file` there is nothing to render: `github` prints only its marker line and an empty line, and `custom` gets no plans. A path or glob that matches no file, a file that cannot be read, or JSON that does not have the shape of a plan fails the command with exit code 65. Pass the output of `show -json` on a plan file: `show -json` on the state is read as a plan without changes.
 
-Actions are shown as icons: ✅ create, ♻️ replace (delete and create), 🔍 read, 🔄 update, ❌ delete, 🟰 no-op, ❓ unknown.
+Actions are shown as icons: ✅ create, ♻️ replace (delete and create), 🔍 read, 🔄 update, ❌ delete, 💤 no-op (🟰 before 0.3.0), ❓ unknown.
 
 ### `github`
 
 Renders GitHub markdown for a PR comment:
 
 - a hidden `<!-- tf-plan-format -->` first line (from 0.2.0), to find the comment again when updating it;
-- one collapsible block per plan, titled from its path: the file name is dropped when all plans share it, then the leading directories all plans share, so `plans/prod/plan.json` and `plans/stage/plan.json` become `prod` and `stage`, and a single `infra/plan.json` becomes `infra`;
-- the block's summary shows the icons of the changes it shows and of its output changes, the title and `Plan: X to add, Y to change, Z to destroy`, or `No changes`;
-- inside, a collapsible block per resource change with its address and values, and an `Outputs` block when outputs change.
+- one collapsible block per plan with changes, titled from its path: the file name is dropped when all plans share it, then the leading directories all plans share, so `plans/prod/plan.json` and `plans/stage/plan.json` become `prod` and `stage`, and a single `infra/plan.json` becomes `infra`;
+- the block's summary shows the icons of the changes it shows and of its output changes, the title in bold and the counts as `+X ~Y −Z` (to add, change, destroy; both from 0.3.0);
+- inside, in a `<blockquote>` that indents them under the plan (from 0.3.0), a collapsible block per resource change with its address as code (from 0.3.0) and its values, or `No value changes` when none are shown (from 0.3.0), and an `Outputs` block when outputs change;
+- last, plans without changes in one collapsible `💤 No changes (N)` block, a line each (from 0.3.0; before, each had its own block titled `No changes`).
 
 Sensitive values are shown as `sensitive`, `sensitive (changed)` or `sensitive (known after apply)`, values known only after apply as `(known after apply)`.
 
@@ -77,7 +78,7 @@ Sensitive values are shown as `sensitive`, `sensitive (changed)` or `sensitive (
 | `--show-read`            | off     | Render data source reads                                                                                                                                             |
 | `--max-length`           | none    | Limit the output length, see below                                                                                                                                   |
 
-With `--max-length`, output longer than the limit (in bytes, the trailing newline not counted) is shortened: the largest values blocks are replaced with `_Values not shown to fit the length limit_` until it fits, and if that is not enough the last plans are dropped. A closing note says what was left out, for example `_Output limited to 1500 bytes: the last 3 plans, values of 3 changes and outputs of 1 plan not shown_`. The marker line counts towards the limit; if even the marker and the note do not fit, only they are printed.
+With `--max-length`, output longer than the limit (in bytes, the trailing newline not counted) is shortened: the largest values blocks are replaced with `_Values not shown to fit the length limit_` until it fits, and if that is not enough the last plans are dropped, in render order, so the plans without changes go first. A closing note says what was left out, for example `_Output limited to 1500 bytes: the last 3 plans, values of 3 changes and outputs of 1 plan not shown_`. The marker line counts towards the limit; if even the marker and the note do not fit, only they are printed.
 
 ```sh
 tf_plan_format github --file tests/data/plans/outputs/opentofu.tfplan.json
@@ -86,9 +87,10 @@ tf_plan_format github --file tests/data/plans/outputs/opentofu.tfplan.json
 ````markdown
 <!-- tf-plan-format -->
 <details>
-<summary>✅🔄❌outputs - Plan: 0 to add, 1 to change, 0 to destroy</summary>
+<summary>✅🔄❌ <b>outputs</b> +0 ~1 −0</summary>
+<blockquote>
 <details>
-<summary>🔄terraform_data.foo-bar
+<summary>🔄 <code>terraform_data.foo-bar</code>
 </summary>
 
 ```
@@ -98,7 +100,7 @@ output: "foo" -> (known after apply)
 
 </details>
 <details>
-<summary>✅🔄❌Outputs
+<summary>✅🔄❌ Outputs
 </summary>
 
 ```
@@ -110,6 +112,7 @@ unknown: "foo" -> (known after apply)
 ```
 
 </details>
+</blockquote>
 </details>
 ````
 

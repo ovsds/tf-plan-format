@@ -19,49 +19,74 @@ macro_rules! collapsed_values {
 /// What the github template renders in place of a collapsed values block
 pub const COLLAPSED_VALUES: &str = collapsed_values!();
 
-/// Starts with a hidden marker, so a caller can find and update the pull request comment holding the render
+/// Starts with a hidden marker, so a caller can find and update the pull request comment holding the render.
+///
+/// Renders the plans with changes first and those without last, in one block: the order dropping the last plans and
+/// the plan indices of the collapsing options follow
 pub const GITHUB_MARKDOWN_TEMPLATE: &str = concat!("
 {%- set plan_count = options.plan_count | default(value=data.plans | length) %}
 {%- set collapsed_outputs = options.collapsed_outputs | default(value=[]) -%}
 <!-- tf-plan-format -->
-{% for plan_key, plan in data.plans %}
-{%- set plan_index = loop.index0 %}
-{%- if plan_index < plan_count %}
+{% set_global plan_index = 0 %}
+{%- for plan_key, plan in data.plans %}
 {%- set changes = plan.changes | filter_actions(exclude=options.hidden_actions) %}
-{%- set collapsed_changes = options.collapsed_changes[plan_index] | default(value=[]) %}<details>
-<summary>{{ render_actions(actions=changes | map(attribute=\"action\") | concat(with=plan.outputs.actions)) }}{{ plan.title }}
-{%- if plan.summary.add == 0 and plan.summary.change == 0 and plan.summary.destroy == 0 and not changes and not plan.outputs.actions %} - No changes
-{%- else %} - Plan: {{ plan.summary.add }} to add, {{ plan.summary.change }} to change, {{ plan.summary.destroy }} to destroy
-{%- endif %}</summary>
-{%- if not changes and not plan.outputs.actions %}
-No resource changes
-{%- else %}
+{%- if changes or plan.outputs.actions %}
+{%- if plan_index < plan_count %}
+{%- set collapsed_changes = options.collapsed_changes[plan_index] | default(value=[]) %}
+{%- set plan_actions = render_actions(actions=changes | map(attribute=\"action\") | concat(with=plan.outputs.actions)) %}<details>
+<summary>{{ plan_actions }}{% if plan_actions %} {% endif %}<b>{{ plan.title }}</b> +{{ plan.summary.add }} ~{{ plan.summary.change }} −{{ plan.summary.destroy }}</summary>
+<blockquote>
 {%- for change in changes %}
 <details>
-<summary>{{ render_action(action=change.action) }}{{ change.address }}
+<summary>{{ render_action(action=change.action) }} <code>{{ change.address }}</code>
 </summary>
 
-{% if loop.index0 in collapsed_changes %}", collapsed_values!(), "{% else %}```
-{{ render_values(before=change.before, after=change.after, show_changed_values=options.show_changed_values) }}
-```{% endif %}
+{% if loop.index0 in collapsed_changes %}", collapsed_values!(), "{% else %}
+{%- set values = render_values(before=change.before, after=change.after, show_changed_values=options.show_changed_values) %}
+{%- if values %}```
+{{ values }}
+```{% else %}_No value changes_{% endif %}{% endif %}
 
 </details>
 {%- endfor %}
 {%- if plan.outputs.actions %}
 <details>
-<summary>{{ render_actions(actions=plan.outputs.actions) }}Outputs
+<summary>{{ render_actions(actions=plan.outputs.actions) }} Outputs
 </summary>
 
-{% if plan_index in collapsed_outputs %}", collapsed_values!(), "{% else %}```
-{{ render_values(before=plan.outputs.before, after=plan.outputs.after, show_changed_values=options.show_changed_values) }}
-```{% endif %}
+{% if plan_index in collapsed_outputs %}", collapsed_values!(), "{% else %}
+{%- set values = render_values(before=plan.outputs.before, after=plan.outputs.after, show_changed_values=options.show_changed_values) %}
+{%- if values %}```
+{{ values }}
+```{% else %}_No value changes_{% endif %}{% endif %}
 
 </details>
 {%- endif %}
-{%- endif %}
+</blockquote>
 </details>
 {% endif %}
+{%- set_global plan_index = plan_index + 1 %}
+{%- endif %}
 {%- endfor %}
+{%- set_global unchanged_titles = [] %}
+{%- for plan_key, plan in data.plans %}
+{%- set changes = plan.changes | filter_actions(exclude=options.hidden_actions) %}
+{%- if not changes and not plan.outputs.actions %}
+{%- if plan_index < plan_count %}
+{%- set_global unchanged_titles = unchanged_titles | concat(with=plan.title) %}
+{%- endif %}
+{%- set_global plan_index = plan_index + 1 %}
+{%- endif %}
+{%- endfor %}
+{%- if unchanged_titles %}<details>
+<summary>💤 No changes ({{ unchanged_titles | length }})</summary>
+<blockquote>
+{%- for title in unchanged_titles %}
+<div>💤 <b>{{ title }}</b></div>
+{%- endfor %}
+</blockquote>
+</details>
+{% endif %}
 {%- if options.note is defined %}{% if plan_count > 0 %}
 {% endif %}_{{ options.note }}_
 {% endif %}");
@@ -75,7 +100,7 @@ fn render_action(action: &tf::Action) -> String {
         tf::Action::Delete => "❌".to_string(),
         tf::Action::DeleteCreate => "♻️".to_string(),
         tf::Action::Update => "🔄".to_string(),
-        tf::Action::NoOp => "🟰".to_string(),
+        tf::Action::NoOp => "💤".to_string(),
         tf::Action::Read => "🔍".to_string(),
         tf::Action::Unknown => "❓".to_string(),
     }
@@ -244,6 +269,10 @@ fn render_changed_hashmap(
     indent_count: usize,
     show_changed_values: bool,
 ) -> Vec<String> {
+    // Without unchanged values an unchanged object has nothing under its key
+    if before == after && !show_changed_values {
+        return Vec::new();
+    }
     let mut result: Vec<String> = Vec::new();
     result.push(format!("{}{key}:", INDENT_STR.repeat(indent_count)));
     result.extend(render_changed_hashmap_value(
@@ -600,7 +629,7 @@ mod tests {
             assert_eq!(test(tf::Action::Delete).unwrap(), "❌");
             assert_eq!(test(tf::Action::DeleteCreate).unwrap(), "♻️");
             assert_eq!(test(tf::Action::Update).unwrap(), "🔄");
-            assert_eq!(test(tf::Action::NoOp).unwrap(), "🟰");
+            assert_eq!(test(tf::Action::NoOp).unwrap(), "💤");
             assert_eq!(test(tf::Action::Read).unwrap(), "🔍");
             assert_eq!(test(tf::Action::Unknown).unwrap(), "❓");
         }
@@ -657,7 +686,7 @@ mod tests {
                 tf::Action::Read,
                 tf::Action::Unknown,
             ];
-            assert_eq!(test(actions).unwrap(), "✅♻\u{fe0f}🔍🔄❌🟰❓");
+            assert_eq!(test(actions).unwrap(), "✅♻\u{fe0f}🔍🔄❌💤❓");
         }
 
         #[test]
@@ -1031,6 +1060,22 @@ object:
 sensitive: sensitive -> sensitive (known after apply)
 string: "abc" -> (known after apply)"#;
             pretty_assertions::assert_eq!(result, expected);
+        }
+
+        #[test]
+        fn object_unchanged_hide_unchanged() {
+            let object = tf::Value::Object(std::collections::HashMap::from([(
+                "env".to_string(),
+                tf::Value::String("prod".to_string()),
+            )]));
+            let values = std::collections::HashMap::from([("tags".to_string(), object)]);
+
+            let hidden =
+                test_show_changed_values(Some(values.clone()), Some(values.clone()), false);
+            pretty_assertions::assert_eq!(hidden, "");
+
+            let shown = test_show_changed_values(Some(values.clone()), Some(values), true);
+            pretty_assertions::assert_eq!(shown, "tags:\n  env: \"prod\"");
         }
 
         fn test_array(
