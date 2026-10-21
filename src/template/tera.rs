@@ -20,25 +20,21 @@ macro_rules! collapsed_values {
 pub const COLLAPSED_VALUES: &str = collapsed_values!();
 
 /// Starts with a hidden marker, so a caller can find and update the pull request comment holding the render
+/// Renders the plans with changes first and those without last, in one block: the order dropping the last plans and
+/// the plan indices of the collapsing options follow
 pub const GITHUB_MARKDOWN_TEMPLATE: &str = concat!("
 {%- set plan_count = options.plan_count | default(value=data.plans | length) %}
 {%- set collapsed_outputs = options.collapsed_outputs | default(value=[]) -%}
 <!-- tf-plan-format -->
-{% set_global unchanged_titles = [] %}
+{% set_global plan_index = 0 %}
 {%- for plan_key, plan in data.plans %}
-{%- set plan_index = loop.index0 %}
-{%- if plan_index < plan_count %}
 {%- set changes = plan.changes | filter_actions(exclude=options.hidden_actions) %}
-{%- if plan.summary.add == 0 and plan.summary.change == 0 and plan.summary.destroy == 0 and not changes and not plan.outputs.actions %}
-{%- set_global unchanged_titles = unchanged_titles | concat(with=plan.title) %}
-{%- else %}
+{%- if changes or plan.outputs.actions %}
+{%- if plan_index < plan_count %}
 {%- set collapsed_changes = options.collapsed_changes[plan_index] | default(value=[]) %}
 {%- set plan_actions = render_actions(actions=changes | map(attribute=\"action\") | concat(with=plan.outputs.actions)) %}<details>
 <summary>{{ plan_actions }}{% if plan_actions %} {% endif %}<b>{{ plan.title }}</b> +{{ plan.summary.add }} ~{{ plan.summary.change }} −{{ plan.summary.destroy }}</summary>
 <blockquote>
-{%- if not changes and not plan.outputs.actions %}
-No resource changes
-{%- else %}
 {%- for change in changes %}
 <details>
 <summary>{{ render_action(action=change.action) }} <code>{{ change.address }}</code>
@@ -65,10 +61,21 @@ No resource changes
 
 </details>
 {%- endif %}
-{%- endif %}
 </blockquote>
 </details>
-{% endif %}{% endif %}
+{% endif %}
+{%- set_global plan_index = plan_index + 1 %}
+{%- endif %}
+{%- endfor %}
+{%- set_global unchanged_titles = [] %}
+{%- for plan_key, plan in data.plans %}
+{%- set changes = plan.changes | filter_actions(exclude=options.hidden_actions) %}
+{%- if not changes and not plan.outputs.actions %}
+{%- if plan_index < plan_count %}
+{%- set_global unchanged_titles = unchanged_titles | concat(with=plan.title) %}
+{%- endif %}
+{%- set_global plan_index = plan_index + 1 %}
+{%- endif %}
 {%- endfor %}
 {%- if unchanged_titles %}<details>
 <summary>💤 No changes ({{ unchanged_titles | length }})</summary>

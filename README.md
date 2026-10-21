@@ -78,7 +78,7 @@ Sensitive values are shown as `sensitive`, `sensitive (changed)` or `sensitive (
 | `--show-read`            | off     | Render data source reads                                                                                                                                             |
 | `--max-length`           | none    | Limit the output length, see below                                                                                                                                   |
 
-With `--max-length`, output longer than the limit (in bytes, the trailing newline not counted) is shortened: the largest values blocks are replaced with `_Values not shown to fit the length limit_` until it fits, and if that is not enough the last plans are dropped. A closing note says what was left out, for example `_Output limited to 1500 bytes: the last 3 plans, values of 3 changes and outputs of 1 plan not shown_`. The marker line counts towards the limit; if even the marker and the note do not fit, only they are printed.
+With `--max-length`, output longer than the limit (in bytes, the trailing newline not counted) is shortened: the largest values blocks are replaced with `_Values not shown to fit the length limit_` until it fits, and if that is not enough the last plans are dropped, in render order, so the plans without changes go first. A closing note says what was left out, for example `_Output limited to 1500 bytes: the last 3 plans, values of 3 changes and outputs of 1 plan not shown_`. The marker line counts towards the limit; if even the marker and the note do not fit, only they are printed.
 
 ```sh
 tf_plan_format github --file tests/data/plans/outputs/opentofu.tfplan.json

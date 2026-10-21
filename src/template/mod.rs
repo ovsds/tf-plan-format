@@ -46,6 +46,7 @@ pub fn render_github(
     if !show_read {
         hidden_actions.push(tf::Action::Read);
     }
+    let plan_order = get_plan_order(data, &hidden_actions);
     let render = |limits: Option<&Limits>| {
         let mut options = tera::RenderOptions::new();
         options.insert(
@@ -67,7 +68,7 @@ pub fn render_github(
         return Ok(result);
     };
 
-    let blocks = get_values_blocks(data, &hidden_actions, show_changed_values);
+    let blocks = get_values_blocks(data, &plan_order, &hidden_actions, show_changed_values);
     let mut limits = Limits::new(max_length, data.plans.len());
     result = collapse_until_fits(&mut limits, &blocks, result, |limits| render(Some(limits)))?;
     if result.len() > max_length {
@@ -144,19 +145,40 @@ struct ValuesBlock {
     saving: usize,
 }
 
+fn get_shown_changes<'a>(
+    plan: &'a tf::Plan,
+    hidden_actions: &'a [tf::Action],
+) -> impl Iterator<Item = &'a tf::Change> {
+    plan.changes
+        .iter()
+        .filter(|change| tera::keeps_action(&change.action, hidden_actions, false))
+}
+
+/// The keys of the plans in render order: those with changes first, then those without, each in path order, so
+/// dropping the last plans drops the plans without changes first
+fn get_plan_order(data: &tf::Data, hidden_actions: &[tf::Action]) -> Vec<String> {
+    let (changed, unchanged): (Vec<_>, Vec<_>) = data.plans.iter().partition(|(_, plan)| {
+        get_shown_changes(plan, hidden_actions).next().is_some() || !plan.outputs.actions.is_empty()
+    });
+    changed
+        .into_iter()
+        .chain(unchanged)
+        .map(|(key, _)| key.clone())
+        .collect()
+}
+
 /// Values blocks the github template renders that collapsing shortens, largest saving first, ties in render
 /// order
 fn get_values_blocks(
     data: &tf::Data,
+    plan_order: &[String],
     hidden_actions: &[tf::Action],
     show_changed_values: bool,
 ) -> Vec<ValuesBlock> {
     let mut blocks = Vec::new();
-    for (plan_index, plan) in data.plans.values().enumerate() {
-        let changes = plan
-            .changes
-            .iter()
-            .filter(|change| tera::keeps_action(&change.action, hidden_actions, false))
+    for (plan_index, key) in plan_order.iter().enumerate() {
+        let plan = &data.plans[key];
+        let changes = get_shown_changes(plan, hidden_actions)
             .enumerate()
             .map(|(index, change)| {
                 let kind = ValuesBlockKind::Change(index);
@@ -433,15 +455,17 @@ mod tests {
         #[test]
         fn drops_last_plans() {
             let data = tf::tests::get_test_data();
-            let result = render_capped(&data, 2000);
+            let result = render_capped(&data, 2900);
 
-            assert!(result.len() <= 2000);
+            assert!(result.len() <= 2900);
             // The kept plans show again the values that fit once the last plans are dropped
             assert!(result.contains("```"));
-            assert!(result.contains("<b>no-resources/terraform.tfplan.json</b>"));
-            assert!(!result.contains("<b>outputs/opentofu.tfplan.json</b>"));
+            // The plans without changes render last, so they are dropped first
+            assert!(!result.contains("No changes ("));
+            assert!(result.contains("<b>read/terraform.tfplan.json</b>"));
+            assert!(!result.contains("<b>sensitive/opentofu.tfplan.json</b>"));
             assert_eq!(
-                "_Output limited to 2000 bytes: the last 10 plans and values of 5 changes not shown_",
+                "_Output limited to 2900 bytes: the last 10 plans, values of 7 changes and outputs of 2 plans not shown_",
                 get_note(&result)
             );
         }
@@ -485,7 +509,10 @@ mod tests {
                     get_plan(tf::tests::PlanType::UpdateArray),
                 ),
             ]));
-            assert_eq!(2, get_values_blocks(&data, &[], false).len());
+            assert_eq!(
+                2,
+                get_values_blocks(&data, &get_plan_order(&data, &[]), &[], false).len()
+            );
 
             let full = render_github(&data, false, false, false, None).unwrap();
             let mut dropped_with_small_shown = 0;
