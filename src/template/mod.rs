@@ -46,7 +46,6 @@ pub fn render_github(
     if !show_read {
         hidden_actions.push(tf::Action::Read);
     }
-    let plan_order = get_plan_order(data, &hidden_actions);
     let render = |limits: Option<&Limits>| {
         let mut options = tera::RenderOptions::new();
         options.insert(
@@ -68,6 +67,7 @@ pub fn render_github(
         return Ok(result);
     };
 
+    let plan_order = get_plan_order(data, &hidden_actions);
     let blocks = get_values_blocks(data, &plan_order, &hidden_actions, show_changed_values);
     let mut limits = Limits::new(max_length, data.plans.len());
     result = collapse_until_fits(&mut limits, &blocks, result, |limits| render(Some(limits)))?;

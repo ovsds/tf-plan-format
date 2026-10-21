@@ -19,7 +19,8 @@ macro_rules! collapsed_values {
 /// What the github template renders in place of a collapsed values block
 pub const COLLAPSED_VALUES: &str = collapsed_values!();
 
-/// Starts with a hidden marker, so a caller can find and update the pull request comment holding the render
+/// Starts with a hidden marker, so a caller can find and update the pull request comment holding the render.
+///
 /// Renders the plans with changes first and those without last, in one block: the order dropping the last plans and
 /// the plan indices of the collapsing options follow
 pub const GITHUB_MARKDOWN_TEMPLATE: &str = concat!("
