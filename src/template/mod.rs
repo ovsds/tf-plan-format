@@ -339,7 +339,7 @@ mod tests {
         }
 
         fn get_plan_section<'a>(result: &'a str, title: &str) -> &'a str {
-            let start = result.find(&format!("{title}</b> - ")).unwrap();
+            let start = result.find(&format!("<b>{title}</b> - ")).unwrap() + "<b>".len();
             let end = result[start + title.len()..]
                 .find(".tfplan.json</b> - ")
                 .map_or(result.len(), |end| start + title.len() + end);
