@@ -523,6 +523,11 @@ mod tests {
                         "{max_length}: {result}"
                     );
                     assert_eq!(
+                        result.matches("<blockquote>").count(),
+                        result.matches("</blockquote>").count(),
+                        "{max_length}: {result}"
+                    );
+                    assert_eq!(
                         0,
                         result.lines().filter(|line| *line == "```").count() % 2,
                         "{max_length}: {result}"

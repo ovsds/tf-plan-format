@@ -65,7 +65,7 @@ Renders GitHub markdown for a PR comment:
 - a hidden `<!-- tf-plan-format -->` first line (from 0.2.0), to find the comment again when updating it;
 - one collapsible block per plan, titled from its path: the file name is dropped when all plans share it, then the leading directories all plans share, so `plans/prod/plan.json` and `plans/stage/plan.json` become `prod` and `stage`, and a single `infra/plan.json` becomes `infra`;
 - the block's summary shows the icons of the changes it shows and of its output changes, the title and `Plan: X to add, Y to change, Z to destroy`, or `No changes`;
-- inside, a collapsible block per resource change with its address and values, and an `Outputs` block when outputs change.
+- inside, in a `<blockquote>` that indents them under the plan (from 0.3.0), a collapsible block per resource change with its address and values, and an `Outputs` block when outputs change.
 
 Sensitive values are shown as `sensitive`, `sensitive (changed)` or `sensitive (known after apply)`, values known only after apply as `(known after apply)`.
 
