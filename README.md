@@ -65,7 +65,10 @@ Renders GitHub markdown for a PR comment:
 - a hidden `<!-- tf-plan-format -->` first line (from 0.2.0), to find the comment again when updating it;
 - one collapsible block per plan with changes, titled from its path: the file name is dropped when all plans share it, then the leading directories all plans share, so `plans/prod/plan.json` and `plans/stage/plan.json` become `prod` and `stage`, and a single `infra/plan.json` becomes `infra`;
 - the block's summary shows the icons of the changes it shows and of its output changes, the title in bold and the counts as `+X ~Y −Z` (to add, change, destroy; both from 0.3.0);
-- inside, in a `<blockquote>` that indents them under the plan (from 0.3.0), a collapsible block per resource change with its address as code (from 0.3.0) and its values, or `No value changes` when none are shown (from 0.3.0), and an `Outputs` block when outputs change;
+- inside, the plan's resource changes and then its outputs in one `diff` code block (from 0.4.0; before, a collapsible block each, in a `<blockquote>` from 0.3.0): a `@@ <icon> <address> @@` header line per change and `@@ <icons> Outputs @@` when outputs change, each followed by its values, a line per value as `render_values` prints it, prefixed so GitHub colors it (from 0.4.0):
+  - `+` on every line of a change with only the new values (create, read), `-` on every line of one with only the old values (delete);
+  - otherwise (update, replace, no-op, outputs) `!` on a line that carries a change, such as `name: before -> after` or every line of an object that appears or disappears under its key, and a space on the others: unchanged values (with `--changed-values`), the keys of changed objects and arrays and the `- ...` markers of skipped array elements;
+  - a change with no values shown is its header line alone (from 0.4.0; before, `No value changes`);
 - last, plans without changes in one collapsible `💤 No changes (N)` block, a line each (from 0.3.0; before, each had its own block titled `No changes`).
 
 Sensitive values are shown as `sensitive`, `sensitive (changed)` or `sensitive (known after apply)`, values known only after apply as `(known after apply)`.
@@ -78,7 +81,7 @@ Sensitive values are shown as `sensitive`, `sensitive (changed)` or `sensitive (
 | `--show-read`            | off     | Render data source reads                                                                                                                                             |
 | `--max-length`           | none    | Limit the output length, see below                                                                                                                                   |
 
-With `--max-length`, output longer than the limit (in bytes, the trailing newline not counted) is shortened: the largest values blocks are replaced with `_Values not shown to fit the length limit_` until it fits, and if that is not enough the last plans are dropped, in render order, so the plans without changes go first. A closing note says what was left out, for example `_Output limited to 1500 bytes: the last 3 plans, values of 3 changes and outputs of 1 plan not shown_`. The marker line counts towards the limit; if even the marker and the note do not fit, only they are printed.
+With `--max-length`, output longer than the limit (in bytes, the trailing newline not counted) is shortened: the values of the largest changes and outputs are replaced, under their header line, with the line `Values not shown to fit the length limit`, prefixed with a space (from 0.4.0; before, the whole values block became `_Values not shown to fit the length limit_`) until it fits, and if that is not enough the last plans are dropped, in render order, so the plans without changes go first. A closing note says what was left out, for example `_Output limited to 1500 bytes: the last 3 plans, values of 3 changes and outputs of 1 plan not shown_`. The marker line counts towards the limit; if even the marker and the note do not fit, only they are printed.
 
 ```sh
 tf_plan_format github --file tests/data/plans/outputs/opentofu.tfplan.json
@@ -88,31 +91,19 @@ tf_plan_format github --file tests/data/plans/outputs/opentofu.tfplan.json
 <!-- tf-plan-format -->
 <details>
 <summary>✅🔄❌ <b>outputs</b> +0 ~1 −0</summary>
-<blockquote>
-<details>
-<summary>🔄 <code>terraform_data.foo-bar</code>
-</summary>
 
-```
-input: "foo" -> "bar"
-output: "foo" -> (known after apply)
-```
-
-</details>
-<details>
-<summary>✅🔄❌ Outputs
-</summary>
-
-```
-added: null -> "added"
-changed: "before" -> "after"
-removed: "removed" -> null
-secret: sensitive -> sensitive (changed)
-unknown: "foo" -> (known after apply)
+```diff
+@@ 🔄 terraform_data.foo-bar @@
+! input: "foo" -> "bar"
+! output: "foo" -> (known after apply)
+@@ ✅🔄❌ Outputs @@
+! added: null -> "added"
+! changed: "before" -> "after"
+! removed: "removed" -> null
+! secret: sensitive -> sensitive (changed)
+! unknown: "foo" -> (known after apply)
 ```
 
-</details>
-</blockquote>
 </details>
 ````
 
@@ -147,7 +138,8 @@ A value is an object with its type in `op` and its content in `path`, such as `{
 
 All arguments are named, for example `render_action(action=change.action)`.
 
-- `render_values(before, after, show_changed_values=true)`: renders two attribute maps as the `github` command does, a `name: value` or `name: before -> after` line per attribute; with one side `null`, lists the other side's values. `show_changed_values=false` leaves out what did not change.
+- `render_values(before, after, show_changed_values=true)`: renders two attribute maps, a `name: value` or `name: before -> after` line per attribute; with one side `null`, lists the other side's values. `show_changed_values=false` leaves out what did not change.
+- `render_diff_values(before, after, show_changed_values=true)` (from 0.4.0): the lines of `render_values`, each prefixed with `+`, `-`, `!` or a space and then a space for a `diff` code block, as the `github` command renders them.
 - `render_action(action)`: the action's icon.
 - `render_actions(actions)`: the icons of a list of actions, deduplicated and sorted.
 - `filter_actions(include=[...])` or `filter_actions(exclude=[...])`: a filter that keeps the items of a list, such as `changes`, whose `action` is (or is not) one of the given actions; exactly one of the two arguments is required.

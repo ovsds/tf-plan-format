@@ -47,18 +47,7 @@ pub fn render_github(
         hidden_actions.push(tf::Action::Read);
     }
     let render = |limits: Option<&Limits>| {
-        let mut options = tera::RenderOptions::new();
-        options.insert(
-            "show_changed_values".to_string(),
-            tera::RenderOptionValue::Bool(show_changed_values),
-        );
-        options.insert(
-            "hidden_actions".to_string(),
-            tera::RenderOptionValue::Actions(hidden_actions.clone()),
-        );
-        if let Some(limits) = limits {
-            limits.insert_options(&mut options);
-        }
+        let options = get_github_options(show_changed_values, &hidden_actions, limits);
         tera::render(data, tera::GITHUB_MARKDOWN_TEMPLATE, Some(options))
     };
 
@@ -90,6 +79,26 @@ pub fn render_github(
         })?;
     }
     Ok(result)
+}
+
+fn get_github_options(
+    show_changed_values: bool,
+    hidden_actions: &[tf::Action],
+    limits: Option<&Limits>,
+) -> tera::RenderOptions {
+    let mut options = tera::RenderOptions::new();
+    options.insert(
+        "show_changed_values".to_string(),
+        tera::RenderOptionValue::Bool(show_changed_values),
+    );
+    options.insert(
+        "hidden_actions".to_string(),
+        tera::RenderOptionValue::Actions(hidden_actions.to_vec()),
+    );
+    if let Some(limits) = limits {
+        limits.insert_options(&mut options);
+    }
+    options
 }
 
 /// Collapses blocks largest first until the output fits or every block is collapsed
@@ -193,8 +202,10 @@ fn get_values_blocks(
             )
         });
         blocks.extend(changes.chain(outputs).filter_map(|(kind, before, after)| {
-            let values = tera::render_values(before, after, show_changed_values);
-            let saving = (values.len() + "```\n\n```".len())
+            // The values and the collapsed line each follow a newline in the diff block, the newlines cancel out
+            let values = tera::render_diff_values(before, after, show_changed_values);
+            let saving = values
+                .len()
                 .checked_sub(tera::COLLAPSED_VALUES.len())
                 .filter(|&saving| saving > 0)?;
             Some(ValuesBlock {
@@ -401,6 +412,44 @@ mod tests {
         }
 
         #[test]
+        fn change_without_values() {
+            let data = tf::Data::new(std::collections::BTreeMap::from([(
+                "a/plan.json".to_string(),
+                get_plan(tf::tests::PlanType::NoOp),
+            )]));
+            let result = render_github(&data, false, true, false, None).unwrap();
+
+            pretty_assertions::assert_eq!(
+                "<!-- tf-plan-format -->\n<details>\n<summary>💤 <b>a</b> +0 ~0 −0</summary>\n\n```diff\n@@ 💤 terraform_data.foo-bar @@\n```\n\n</details>\n",
+                result
+            );
+        }
+
+        #[test]
+        fn saving_is_exact() {
+            let data = tf::tests::get_test_data();
+            let hidden_actions = vec![tf::Action::NoOp, tf::Action::Read];
+            let render = |limits: &Limits| {
+                let mut options = get_github_options(false, &hidden_actions, Some(limits));
+                options.remove("note");
+                tera::render(&data, tera::GITHUB_MARKDOWN_TEMPLATE, Some(options)).unwrap()
+            };
+            let full = render(&Limits::new(0, data.plans.len()));
+            let plan_order = get_plan_order(&data, &hidden_actions);
+            let blocks = get_values_blocks(&data, &plan_order, &hidden_actions, false);
+
+            assert!(!blocks.is_empty());
+            for block in &blocks {
+                let mut limits = Limits::new(0, data.plans.len());
+                limits.collapse(block);
+                let collapsed = render(&limits);
+
+                assert!(collapsed.contains(COLLAPSED));
+                assert_eq!(block.saving, full.len() - collapsed.len());
+            }
+        }
+
+        #[test]
         fn cap_not_reached() {
             let data = tf::tests::get_test_data();
             let expected = get_expected_default();
@@ -417,18 +466,18 @@ mod tests {
             // Both update-array plans hold the largest values: the tie goes to the one rendered first
             let collapsed = get_plan_section(&result, "update-array/opentofu.tfplan.json");
             assert!(collapsed.contains(&format!(
-                "<summary>🔄 <code>terraform_data.foo-bar</code>\n</summary>\n\n{COLLAPSED}\n\n</details>"
+                "```diff\n@@ 🔄 terraform_data.foo-bar @@\n{COLLAPSED}\n```\n\n</details>"
             )));
-            assert!(!collapsed.contains("```"));
+            assert!(!collapsed.contains("names:"));
             let kept = get_plan_section(&result, "update-array/terraform.tfplan.json");
             assert!(!kept.contains(COLLAPSED));
             assert_eq!(1, result.matches(COLLAPSED).count());
             assert_eq!(
-                "_Output limited to 5828 bytes: values of 1 change not shown_",
+                "_Output limited to 4742 bytes: values of 1 change not shown_",
                 get_note(&result)
             );
             assert!(result.ends_with(
-                "</details>\n\n_Output limited to 5828 bytes: values of 1 change not shown_\n"
+                "</details>\n\n_Output limited to 4742 bytes: values of 1 change not shown_\n"
             ));
         }
 
@@ -439,9 +488,11 @@ mod tests {
             let result = render_capped(&data, full.len() - 1);
 
             assert!(result.contains(&format!(
-                "<summary>✅🔄❌ Outputs\n</summary>\n\n{COLLAPSED}\n\n</details>"
+                "@@ ✅🔄❌ Outputs @@\n{COLLAPSED}\n```\n\n</details>"
             )));
-            assert!(result.contains("```\ninput: \"foo\" -> \"bar\""));
+            assert!(
+                result.contains("@@ 🔄 terraform_data.foo-bar @@\n! input: \"foo\" -> \"bar\"\n")
+            );
             assert_eq!(1, result.matches(COLLAPSED).count());
             assert_eq!(
                 format!(
@@ -455,17 +506,17 @@ mod tests {
         #[test]
         fn drops_last_plans() {
             let data = tf::tests::get_test_data();
-            let result = render_capped(&data, 2900);
+            let result = render_capped(&data, 2200);
 
-            assert!(result.len() <= 2900);
+            assert!(result.len() <= 2200);
             // The kept plans show again the values that fit once the last plans are dropped
-            assert!(result.contains("```"));
+            assert!(result.contains("\n! input: "));
             // The plans without changes render last, so they are dropped first
             assert!(!result.contains("No changes ("));
             assert!(result.contains("<b>read/terraform.tfplan.json</b>"));
             assert!(!result.contains("<b>sensitive/opentofu.tfplan.json</b>"));
             assert_eq!(
-                "_Output limited to 2900 bytes: the last 10 plans, values of 7 changes and outputs of 2 plans not shown_",
+                "_Output limited to 2200 bytes: the last 10 plans, values of 6 changes and outputs of 2 plans not shown_",
                 get_note(&result)
             );
         }
@@ -480,7 +531,7 @@ mod tests {
             let result = render_capped(&data, full.len() - 1);
 
             assert!(result.contains(&format!(
-                "<summary>🔄 <code>terraform_data.foo-bar</code>\n</summary>\n\n{COLLAPSED}\n\n</details>"
+                "```diff\n@@ 🔄 terraform_data.foo-bar @@\n{COLLAPSED}\n```\n\n</details>"
             )));
             assert_eq!(1, result.matches(COLLAPSED).count());
             assert_eq!(
@@ -518,8 +569,7 @@ mod tests {
             let mut dropped_with_small_shown = 0;
             for max_length in (0..full.len()).step_by(10) {
                 let result = render_capped(&data, max_length);
-                let small_shown = result
-                    .contains("<summary>✅ <code>terraform_data.small</code>\n</summary>\n\n```\na: \"b\"\n```");
+                let small_shown = result.contains("@@ ✅ terraform_data.small @@\n+ a: \"b\"\n");
                 assert!(
                     small_shown || !result.contains("terraform_data.small"),
                     "{max_length}: {result}"
@@ -574,9 +624,16 @@ mod tests {
                         result.matches("</blockquote>").count(),
                         "{max_length}: {result}"
                     );
+                    // Every plan's diff block is closed and starts with a header line, even with all values collapsed
                     assert_eq!(
-                        0,
-                        result.lines().filter(|line| *line == "```").count() % 2,
+                        result.matches("\n```diff\n@@ ").count(),
+                        result.lines().filter(|line| *line == "```").count(),
+                        "{max_length}: {result}"
+                    );
+                    assert_eq!(
+                        result.matches("<details>").count(),
+                        result.matches("```diff").count()
+                            + usize::from(result.contains("No changes (")),
                         "{max_length}: {result}"
                     );
                 }
