@@ -84,7 +84,7 @@ jobs:
             mise run ci-image-scan
 
       - name: Report vulnerabilities
-        uses: ovsds/create-or-update-unique-comment-action@df30f5f96aa71679deb9eb697c98f39ee9e26651 # v1.1.0
+        uses: ovsds/create-or-update-unique-comment-action@2bb0d0b0a9efb193591288d8ac2e201cdda5c26b # v1.1.1
         with:
           issue-number: ${{ github.event.number }}
           body: |
@@ -103,7 +103,7 @@ jobs:
           path: build/bin
 
       - name: Comment on PR
-        uses: ovsds/create-or-update-unique-comment-action@df30f5f96aa71679deb9eb697c98f39ee9e26651 # v1.1.0
+        uses: ovsds/create-or-update-unique-comment-action@2bb0d0b0a9efb193591288d8ac2e201cdda5c26b # v1.1.1
         with:
           issue-number: ${{ github.event.number }}
           body: |
@@ -119,7 +119,7 @@ jobs:
 
       # The PR's own binary renders the plans, so the comment shows how this change looks on GitHub
       - name: Comment rendered plans
-        uses: ovsds/create-or-update-unique-comment-action@df30f5f96aa71679deb9eb697c98f39ee9e26651 # v1.1.0
+        uses: ovsds/create-or-update-unique-comment-action@2bb0d0b0a9efb193591288d8ac2e201cdda5c26b # v1.1.1
         with:
           issue-number: ${{ github.event.number }}
           body-path: ${{ runner.temp }}/rendered-plans.md
