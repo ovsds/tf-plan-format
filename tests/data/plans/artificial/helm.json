@@ -1,0 +1,65 @@
+{
+  "format_version": "1.2",
+  "terraform_version": "1.7.5",
+  "resource_changes": [
+    {
+      "address": "helm_release.web",
+      "name": "web",
+      "change": {
+        "actions": ["update"],
+        "before": {
+          "name": "web",
+          "values": ["replicaCount: 1\nimage:\n  repository: nginx\n  tag: old\nservice:\n  ports: [80, 443]\n"]
+        },
+        "after": {
+          "name": "web",
+          "values": ["replicaCount: 2\nimage:\n  repository: nginx\n  tag: new\nservice:\n  ports: [80, 443]\n"]
+        }
+      }
+    },
+    {
+      "address": "helm_release.worker",
+      "name": "worker",
+      "change": {
+        "actions": ["create"],
+        "before": null,
+        "after": {
+          "name": "worker",
+          "values": ["replicaCount: 1\nextraArgs:\n  - --metrics\n  - --verbose\nempty: []\n"],
+          "metadata": [
+            {
+              "labels": {
+                "team": "platform"
+              },
+              "ports": [8080, 9090]
+            }
+          ]
+        }
+      }
+    },
+    {
+      "address": "helm_release.legacy",
+      "name": "legacy",
+      "change": {
+        "actions": ["delete"],
+        "before": {
+          "name": "legacy",
+          "values": ["replicaCount: 1\nports: [80]\n"]
+        },
+        "after": null
+      }
+    }
+  ],
+  "output_changes": {
+    "configuration": {
+      "actions": ["update"],
+      "before": "{\"replicas\":1,\"annotations\":{\"owner\":\"platform\"}}",
+      "after": "{\"annotations\":{\"owner\":\"platform\"},\"replicas\":2}"
+    },
+    "notes": {
+      "actions": ["update"],
+      "before": "\nFirst line\nOld message\n",
+      "after": "\nFirst line\nNew message\n"
+    }
+  }
+}

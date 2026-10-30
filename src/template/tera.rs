@@ -5,10 +5,8 @@ use serde::Serialize;
 use crate::tf;
 use crate::types;
 use core::str;
-use std::collections::HashSet;
 
 const INDENT_STR: &str = "  ";
-const MAX_ARRAY_DIFF_CELLS: usize = 4_000_000;
 
 macro_rules! collapsed_values {
     () => {
@@ -237,337 +235,6 @@ fn key_line(key: &str, indent_count: usize) -> ValueLine {
     ValueLine::unchanged(format!("{}{key}:", INDENT_STR.repeat(indent_count)))
 }
 
-fn render_unchanged_plaintext(key: &str, value: &tf::Value, indent_count: usize) -> Vec<ValueLine> {
-    vec![ValueLine::unchanged(format!(
-        "{}{key}: {}",
-        INDENT_STR.repeat(indent_count),
-        render_plaintext(value)
-    ))]
-}
-
-fn render_unchanged_hashmap_value(
-    value: &std::collections::HashMap<String, tf::Value>,
-    indent_count: usize,
-) -> Vec<ValueLine> {
-    let mut result: Vec<ValueLine> = Vec::new();
-    for (key, value) in value.iter().sorted_by_key(|x| x.0) {
-        result.extend(render_unchanged(key, value, indent_count));
-    }
-    result
-}
-
-fn render_unchanged_hashmap(
-    key: &str,
-    value: &std::collections::HashMap<String, tf::Value>,
-    indent_count: usize,
-) -> Vec<ValueLine> {
-    let mut result = vec![key_line(key, indent_count)];
-    result.extend(render_unchanged_hashmap_value(value, indent_count + 1));
-    result
-}
-
-fn render_unchanged(key: &str, value: &tf::Value, indent_count: usize) -> Vec<ValueLine> {
-    match value {
-        tf::Value::Object(map) => render_unchanged_hashmap(key, map, indent_count),
-        _ => render_unchanged_plaintext(key, value, indent_count),
-    }
-}
-
-fn render_changed_plaintext(
-    key: &str,
-    before_value: &tf::Value,
-    after_value: &tf::Value,
-    indent_count: usize,
-) -> Vec<ValueLine> {
-    vec![ValueLine::changed(format!(
-        "{}{key}: {} -> {}",
-        INDENT_STR.repeat(indent_count),
-        render_plaintext(before_value),
-        render_plaintext(after_value)
-    ))]
-}
-
-fn render_changed_hashmap_value(
-    before: &std::collections::HashMap<String, tf::Value>,
-    after: &std::collections::HashMap<String, tf::Value>,
-    indent_count: usize,
-    show_changed_values: bool,
-) -> Vec<ValueLine> {
-    let mut keys: HashSet<String> = HashSet::new();
-    keys.extend(before.keys().cloned());
-    keys.extend(after.keys().cloned());
-
-    let mut result: Vec<ValueLine> = Vec::new();
-    for key in keys.iter().sorted() {
-        let before_value = before.get(key).unwrap_or(&tf::Value::Null);
-        let after_value = after.get(key).unwrap_or(&tf::Value::Null);
-        result.extend(render_changed(
-            key,
-            before_value,
-            after_value,
-            indent_count,
-            show_changed_values,
-        ));
-    }
-    result
-}
-
-fn render_changed_hashmap(
-    key: &str,
-    before: &std::collections::HashMap<String, tf::Value>,
-    after: &std::collections::HashMap<String, tf::Value>,
-    indent_count: usize,
-    show_changed_values: bool,
-) -> Vec<ValueLine> {
-    // Without unchanged values an unchanged object has nothing under its key
-    if before == after && !show_changed_values {
-        return Vec::new();
-    }
-    let mut result = vec![key_line(key, indent_count)];
-    result.extend(render_changed_hashmap_value(
-        before,
-        after,
-        indent_count + 1,
-        show_changed_values,
-    ));
-    result
-}
-
-enum ArrayChange<'a> {
-    Same(&'a tf::Value),
-    Changed(&'a tf::Value, &'a tf::Value),
-}
-
-fn diff_arrays<'a>(before: &'a [tf::Value], after: &'a [tf::Value]) -> Vec<ArrayChange<'a>> {
-    let prefix = before
-        .iter()
-        .zip(after)
-        .take_while(|(before, after)| before == after)
-        .count();
-    let suffix = before[prefix..]
-        .iter()
-        .rev()
-        .zip(after[prefix..].iter().rev())
-        .take_while(|(before, after)| before == after)
-        .count();
-
-    let mut result: Vec<ArrayChange> = before[..prefix].iter().map(ArrayChange::Same).collect();
-    result.extend(diff_arrays_middle(
-        &before[prefix..before.len() - suffix],
-        &after[prefix..after.len() - suffix],
-    ));
-    result.extend(
-        before[before.len() - suffix..]
-            .iter()
-            .map(ArrayChange::Same),
-    );
-    result
-}
-
-/// Pairs elements by their longest common subsequence, so an insertion or removal does not shift every later element
-/// into a change; removed and added elements between two common ones are paired up in order, the rest diff with null.
-fn diff_arrays_middle<'a>(before: &'a [tf::Value], after: &'a [tf::Value]) -> Vec<ArrayChange<'a>> {
-    // The table is quadratic: past the cap, elements pair by position
-    if before.len().saturating_mul(after.len()) > MAX_ARRAY_DIFF_CELLS {
-        return (0..before.len().max(after.len()))
-            .map(|index| match (before.get(index), after.get(index)) {
-                (Some(before), Some(after)) if before == after => ArrayChange::Same(before),
-                (before, after) => ArrayChange::Changed(
-                    before.unwrap_or(&tf::Value::Null),
-                    after.unwrap_or(&tf::Value::Null),
-                ),
-            })
-            .collect();
-    }
-
-    let mut common = vec![vec![0usize; after.len() + 1]; before.len() + 1];
-    for i in (0..before.len()).rev() {
-        for j in (0..after.len()).rev() {
-            common[i][j] = if before[i] == after[j] {
-                common[i + 1][j + 1] + 1
-            } else {
-                common[i + 1][j].max(common[i][j + 1])
-            };
-        }
-    }
-
-    let mut result: Vec<ArrayChange> = Vec::new();
-    let mut removed: Vec<&tf::Value> = Vec::new();
-    let mut added: Vec<&tf::Value> = Vec::new();
-    let flush = |result: &mut Vec<ArrayChange<'a>>,
-                 removed: &mut Vec<&'a tf::Value>,
-                 added: &mut Vec<&'a tf::Value>| {
-        for index in 0..removed.len().max(added.len()) {
-            let before_value = removed.get(index).copied().unwrap_or(&tf::Value::Null);
-            let after_value = added.get(index).copied().unwrap_or(&tf::Value::Null);
-            result.push(ArrayChange::Changed(before_value, after_value));
-        }
-        removed.clear();
-        added.clear();
-    };
-
-    let (mut i, mut j) = (0, 0);
-    while i < before.len() || j < after.len() {
-        if i < before.len() && j < after.len() && before[i] == after[j] {
-            flush(&mut result, &mut removed, &mut added);
-            result.push(ArrayChange::Same(&before[i]));
-            i += 1;
-            j += 1;
-        } else if j == after.len() || (i < before.len() && common[i + 1][j] >= common[i][j + 1]) {
-            removed.push(&before[i]);
-            i += 1;
-        } else {
-            added.push(&after[j]);
-            j += 1;
-        }
-    }
-    flush(&mut result, &mut removed, &mut added);
-    result
-}
-
-/// Turns lines rendered one level deeper into a list item: the first line's last indent becomes the `- ` marker.
-/// Nested renderers print nothing for an empty object or one whose only difference is a key turned null: the
-/// inline `fallback` keeps the element visible.
-fn render_array_item(
-    mut lines: Vec<ValueLine>,
-    indent_count: usize,
-    mut fallback: ValueLine,
-) -> Vec<ValueLine> {
-    let item_indent = format!("{}- ", INDENT_STR.repeat(indent_count));
-    let Some(first) = lines.first_mut() else {
-        fallback.text.insert_str(0, &item_indent);
-        return vec![fallback];
-    };
-    let nested_indent = INDENT_STR.repeat(indent_count + 1);
-    if first.text.starts_with(&nested_indent) {
-        first
-            .text
-            .replace_range(..nested_indent.len(), &item_indent);
-    }
-    lines
-}
-
-fn render_changed_inline(before: &tf::Value, after: &tf::Value) -> String {
-    format!(
-        "{} -> {}",
-        render_plaintext(before),
-        render_plaintext(after)
-    )
-}
-
-fn render_changed_array_value(
-    before: &[tf::Value],
-    after: &[tf::Value],
-    indent_count: usize,
-    show_changed_values: bool,
-) -> Vec<ValueLine> {
-    let indent = INDENT_STR.repeat(indent_count);
-    let hidden_marker = format!("{indent}- ...");
-    let mut result: Vec<ValueLine> = Vec::new();
-    for change in diff_arrays(before, after) {
-        match change {
-            // A run of hidden elements keeps one marker, so a change still shows where in the array it is
-            ArrayChange::Same(_) if !show_changed_values => {
-                if result.last().map(|line| &line.text) != Some(&hidden_marker) {
-                    result.push(ValueLine::unchanged(hidden_marker.clone()));
-                }
-            }
-            ArrayChange::Same(value @ tf::Value::Object(map)) => {
-                result.extend(render_array_item(
-                    render_unchanged_hashmap_value(map, indent_count + 1),
-                    indent_count,
-                    ValueLine::unchanged(render_plaintext(value)),
-                ));
-            }
-            ArrayChange::Same(value) => {
-                result.push(ValueLine::unchanged(format!(
-                    "{indent}- {}",
-                    render_plaintext(value)
-                )));
-            }
-            ArrayChange::Changed(
-                before_value @ tf::Value::Object(before),
-                after_value @ tf::Value::Object(after),
-            ) => {
-                result.extend(render_array_item(
-                    render_changed_hashmap_value(
-                        before,
-                        after,
-                        indent_count + 1,
-                        show_changed_values,
-                    ),
-                    indent_count,
-                    ValueLine::changed(render_changed_inline(before_value, after_value)),
-                ));
-            }
-            ArrayChange::Changed(
-                before_value @ tf::Value::Array(before),
-                after_value @ tf::Value::Array(after),
-            ) => {
-                result.extend(render_array_item(
-                    render_changed_array_value(
-                        before,
-                        after,
-                        indent_count + 1,
-                        show_changed_values,
-                    ),
-                    indent_count,
-                    ValueLine::changed(render_changed_inline(before_value, after_value)),
-                ));
-            }
-            ArrayChange::Changed(before, after) => {
-                result.push(ValueLine::changed(format!(
-                    "{indent}- {}",
-                    render_changed_inline(before, after)
-                )));
-            }
-        }
-    }
-    result
-}
-
-fn render_changed(
-    key: &str,
-    before_value: &tf::Value,
-    after_value: &tf::Value,
-    indent_count: usize,
-    show_changed_values: bool,
-) -> Vec<ValueLine> {
-    match (before_value, after_value) {
-        (tf::Value::Object(before), tf::Value::Object(after)) => {
-            render_changed_hashmap(key, before, after, indent_count, show_changed_values)
-        }
-        (tf::Value::Array(before), tf::Value::Array(after)) if before != after => {
-            let mut result = vec![key_line(key, indent_count)];
-            result.extend(render_changed_array_value(
-                before,
-                after,
-                indent_count + 1,
-                show_changed_values,
-            ));
-            result
-        }
-        // The whole object appeared or disappeared under its key, its key line included
-        (tf::Value::Null, tf::Value::Object(after)) => mark(
-            render_unchanged_hashmap(key, after, indent_count),
-            LineKind::Changed,
-        ),
-        (tf::Value::Object(before), tf::Value::Null) => mark(
-            render_unchanged_hashmap(key, before, indent_count),
-            LineKind::Changed,
-        ),
-        (_, _) => {
-            if before_value != after_value {
-                render_changed_plaintext(key, before_value, after_value, indent_count)
-            } else if show_changed_values {
-                render_unchanged_plaintext(key, before_value, indent_count)
-            } else {
-                Vec::new()
-            }
-        }
-    }
-}
-
 type RenderValuesFn = fn(Option<&tf::ValueMap>, Option<&tf::ValueMap>, bool) -> String;
 
 /// Calls `render` with the `before`, `after` and optional `show_changed_values` arguments of a tera function
@@ -597,20 +264,9 @@ fn tera_render_diff_values(args: &Args) -> tera::Result<tera::Value> {
     tera_values(args, render_diff_values)
 }
 
-fn render_value_lines(
-    before: Option<&tf::ValueMap>,
-    after: Option<&tf::ValueMap>,
-    show_changed_values: bool,
-) -> Vec<ValueLine> {
-    match (before, after) {
-        (Some(before), Some(after)) => {
-            render_changed_hashmap_value(before, after, 0, show_changed_values)
-        }
-        (Some(before), None) => mark(render_unchanged_hashmap_value(before, 0), LineKind::Removed),
-        (None, Some(after)) => mark(render_unchanged_hashmap_value(after, 0), LineKind::Added),
-        (None, None) => Vec::new(),
-    }
-}
+#[path = "value_lines.rs"]
+mod value_lines;
+use value_lines::render_value_lines;
 
 #[must_use]
 pub fn render_values(
@@ -1041,7 +697,8 @@ string: "string" -> "another string""#;
         fn before() {
             let result = test(Some(get_test_data()), None).unwrap();
 
-            let expected = r#"array: [42]
+            let expected = r#"array:
+  - 42
 bool: true
 float: 42.1
 integer: 42
@@ -1059,7 +716,8 @@ string: "string""#;
         fn after() {
             let result = test(None, Some(get_test_data())).unwrap();
 
-            let expected = r#"array: [42]
+            let expected = r#"array:
+  - 42
 bool: true
 float: 42.1
 integer: 42
@@ -1128,7 +786,9 @@ string: "string""#;
         fn after_unknown() {
             let result = test(None, Some(get_unknown_after())).unwrap();
 
-            let expected = r#"array: [42, (known after apply)]
+            let expected = r#"array:
+  - 42
+  - (known after apply)
 new: (known after apply)
 object:
   inner: (known after apply)
@@ -1146,7 +806,9 @@ string: (known after apply)"#;
                 true,
             );
 
-            let expected = r#"array: null -> [42, (known after apply)]
+            let expected = r#"array:
+  - 42
+  - (known after apply)
 new: null -> (known after apply)
 object:
   inner: 42 -> (known after apply)
@@ -1164,7 +826,9 @@ string: "abc" -> (known after apply)"#;
                 false,
             );
 
-            let expected = r#"array: null -> [42, (known after apply)]
+            let expected = r#"array:
+  - 42
+  - (known after apply)
 new: null -> (known after apply)
 object:
   inner: 42 -> (known after apply)
