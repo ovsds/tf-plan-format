@@ -1,0 +1,50 @@
+<!-- tf-plan-format -->
+<details>
+<summary>✅🔄❌ <b>artificial</b> +1 ~1 −1</summary>
+
+```diff
+@@ 🔄 helm_release.web @@
+  name: "web"
+  values:
+    - image:
+        repository: "nginx"
+!       tag: "old" -> "new"
+!     replicaCount: 1 -> 2
+      service:
+        ports:
+          - 80
+          - 443
+@@ ✅ helm_release.worker @@
++ metadata:
++   - labels:
++       team: "platform"
++     ports:
++       - 8080
++       - 9090
++ name: "worker"
++ values:
++   - empty: []
++     extraArgs:
++       - "--metrics"
++       - "--verbose"
++     replicaCount: 1
+@@ ❌ helm_release.legacy @@
+- name: "legacy"
+- values:
+-   - ports:
+-       - 80
+-     replicaCount: 1
+@@ 🔄 Outputs @@
+  configuration:
+    annotations:
+      owner: "platform"
+!   replicas: 1 -> 2
+  notes: |
+    
+    First line
+-   Old message
++   New message
+    
+```
+
+</details>

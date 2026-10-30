@@ -121,3 +121,58 @@ fn invalid_files() -> Result<(), Box<dyn std::error::Error>> {
 
     Ok(())
 }
+
+#[test]
+fn helm_values_and_document_outputs() -> Result<(), Box<dyn std::error::Error>> {
+    for changed in [false, true] {
+        let mut cmd = Command::cargo_bin("tf_plan_format")?;
+        cmd.arg("github")
+            .arg("--file")
+            .arg(utils::get_test_data_file_path("plans/artificial/helm.json"));
+        if changed {
+            cmd.arg("--changed-values");
+        }
+        let expected = utils::get_test_data_file_contents(if changed {
+            "tera/renders/github_markdown/helm_changed.txt"
+        } else {
+            "tera/renders/github_markdown/helm.txt"
+        });
+        cmd.assert().success().stdout(expected + "\n").stderr("");
+    }
+    Ok(())
+}
+
+#[test]
+fn helm_values_respect_length_limits() -> Result<(), Box<dyn std::error::Error>> {
+    for changed in [false, true] {
+        for max_length in [200, 350, 500, 800] {
+            let mut cmd = Command::cargo_bin("tf_plan_format")?;
+            cmd.arg("github")
+                .arg("--file")
+                .arg(utils::get_test_data_file_path("plans/artificial/helm.json"))
+                .arg("--max-length")
+                .arg(max_length.to_string());
+            if changed {
+                cmd.arg("--changed-values");
+            }
+            let output = cmd.output()?;
+            assert!(output.status.success());
+            assert!(output.stderr.is_empty());
+            let rendered = String::from_utf8(output.stdout)?;
+            assert!(
+                rendered.strip_suffix('\n').unwrap().len() <= max_length,
+                "{rendered}"
+            );
+            assert_eq!(
+                rendered.matches("<details>").count(),
+                rendered.matches("</details>").count()
+            );
+            assert_eq!(
+                rendered.matches("```diff").count(),
+                rendered.lines().filter(|line| *line == "```").count()
+            );
+            assert!(!rendered.contains("\\n"), "{rendered}");
+        }
+    }
+    Ok(())
+}
