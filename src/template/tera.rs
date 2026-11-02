@@ -1073,6 +1073,40 @@ array:
         }
 
         #[test]
+        fn document_string_to_object() {
+            let mut before = std::collections::HashMap::new();
+            before.insert(
+                "object".to_string(),
+                tf::Value::String("{\"a\": \"x\"}".to_string()),
+            );
+            let mut after = std::collections::HashMap::new();
+            after.insert(
+                "object".to_string(),
+                object(vec![("a", tf::Value::String("x".to_string()))]),
+            );
+
+            let result = test_show_changed_values(Some(before), Some(after), false);
+
+            let expected = r#"object: "{\"a\": \"x\"}"
+object:
+  a: "x""#;
+            pretty_assertions::assert_eq!(result, expected);
+        }
+
+        #[test]
+        fn array_to_multiline_string() {
+            let mut before = std::collections::HashMap::new();
+            before.insert("value".to_string(), tf::Value::Array(strings(&["a"])));
+            let mut after = std::collections::HashMap::new();
+            after.insert("value".to_string(), tf::Value::String("a\nb".to_string()));
+
+            let result = test_show_changed_values(Some(before), Some(after), false);
+
+            let expected = "value:\n  - \"a\"\nvalue: |\n  a\n  b";
+            pretty_assertions::assert_eq!(result, expected);
+        }
+
+        #[test]
         fn empty_object_to_unknown() {
             let mut before = std::collections::HashMap::new();
             before.insert(

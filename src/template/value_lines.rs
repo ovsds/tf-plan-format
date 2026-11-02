@@ -95,6 +95,10 @@ impl Value {
         matches!(self, Self::Scalar(tf::Value::Null))
     }
 
+    fn is_collection(&self) -> bool {
+        matches!(self, Self::Object(..) | Self::Array(_))
+    }
+
     fn contains_block_string(&self) -> bool {
         match self {
             Self::String(text, _) => text.contains('\n') || self.document().is_some(),
@@ -346,7 +350,8 @@ fn item(mut lines: Vec<ValueLine>, indent: usize) -> Vec<ValueLine> {
 }
 
 /// An object or array changing to or from a value of another kind, such as `(known after apply)`, when either spans
-/// several lines: the old lines marked removed, then the new ones marked added
+/// several lines: the old lines marked removed, then the new ones marked added. The other value's strings render as
+/// they are, so a document string replaced by the same structure stays visibly a string.
 fn replaced(
     key: &str,
     before: &Value,
@@ -354,12 +359,11 @@ fn replaced(
     indent: usize,
     parse: bool,
 ) -> Option<(Vec<ValueLine>, Vec<ValueLine>)> {
-    let collection = |value: &Value| matches!(value, Value::Object(..) | Value::Array(_));
-    if before.is_null() || after.is_null() || collection(before) == collection(after) {
+    if before.is_null() || after.is_null() || before.is_collection() == after.is_collection() {
         return None;
     }
-    let removed = named(key, before, indent, parse);
-    let added = named(key, after, indent, parse);
+    let removed = named(key, before, indent, parse && before.is_collection());
+    let added = named(key, after, indent, parse && after.is_collection());
     (removed.len() > 1 || added.len() > 1).then(|| {
         (
             mark(removed, LineKind::Removed),
@@ -593,9 +597,9 @@ fn array(
             let after_value = added.get(i).map(|i| &after[*i]);
             let before = before_value.unwrap_or(&null);
             let after = after_value.unwrap_or(&null);
-            if let Some((removed, added)) = replaced("", before, after, indent + 1, parse) {
-                result.extend(item(removed, indent));
-                result.extend(item(added, indent));
+            if let Some((old_lines, new_lines)) = replaced("", before, after, indent + 1, parse) {
+                result.extend(item(old_lines, indent));
+                result.extend(item(new_lines, indent));
                 continue;
             }
             let lines = changed(
