@@ -143,7 +143,6 @@ fn literal_text_preserves_blank_and_boundary_lines() {
 #[test]
 fn document_detection_rejects_lossy_or_ambiguous_input() {
     for document in [
-        "{\"a\":1,\"a\":2}",
         "a: 1\na: 2\n",
         "1: value\n",
         "? [a, b]\n: value\n",
@@ -153,7 +152,8 @@ fn document_detection_rejects_lossy_or_ambiguous_input() {
         "a: .nan\n",
         "a: .inf\n",
         "a: 18446744073709551616\n",
-        "{\"a\":18446744073709551616}",
+        "a: 0.10000000000000000001\n",
+        "a: 0x1F\n",
     ] {
         let rendered = render_values(None, Some(&values(string(document))), true);
         if document.contains('\n') {
@@ -177,6 +177,49 @@ fn document_detection_rejects_lossy_or_ambiguous_input() {
                 rendered
             );
         }
+    }
+}
+
+#[test]
+fn any_valid_json_object_or_array_is_a_document() {
+    for (document, line) in [
+        (r#"{"a":1,"a":2}"#, r#"    "a": 2"#),
+        (
+            r#"{"a":18446744073709551616}"#,
+            r#"    "a": 18446744073709551616"#,
+        ),
+        (
+            r#"{"a":3.14159265358979323846}"#,
+            r#"    "a": 3.14159265358979323846"#,
+        ),
+    ] {
+        let rendered = render_values(None, Some(&values(string(document))), true);
+        assert!(rendered.starts_with("value: | json\n"), "{rendered}");
+        assert!(rendered.contains(line), "{rendered}");
+    }
+}
+
+#[test]
+fn yaml_scalars_that_read_without_loss_are_documents() {
+    for document in [
+        "a: 1.5\nb: -2e3\nc: 'quoted'\nd: ~\ne: TRUE\n",
+        "- 0.0\n- 10.25\n",
+    ] {
+        let rendered = render_values(None, Some(&values(string(document))), true);
+        assert!(rendered.starts_with("value: | yaml\n"), "{rendered}");
+    }
+    let deep = format!("a: {}{}\n", "[".repeat(200), "]".repeat(200));
+    let rendered = render_values(None, Some(&values(string(&deep))), true);
+    assert!(rendered.starts_with("value: |\n"), "{rendered}");
+}
+
+#[test]
+fn single_line_yaml_stays_a_string() {
+    for text in ["Note: hi", "- x", "[a, b]"] {
+        assert_eq!(
+            format!("value: {}", serde_json::to_string(text).unwrap()),
+            render_values(None, Some(&values(string(text))), true)
+        );
     }
 }
 
@@ -358,7 +401,7 @@ fn unchanged_native_arrays_expand_document_and_text_strings() {
         string("first\nlast"),
         Value::Object(ValueMap::from([(
             "nested".to_string(),
-            Value::Array(vec![string("replicas: 2")]),
+            Value::Array(vec![string("replicas: 2\n")]),
         )])),
     ]));
     assert_eq!(

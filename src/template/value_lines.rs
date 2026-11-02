@@ -1,6 +1,5 @@
 use super::{key_line, mark, render_plaintext, LineKind, ValueLine, INDENT_STR};
 use crate::tf;
-use serde::Deserializer;
 use std::collections::{BTreeMap, BTreeSet};
 use yaml_rust2::parser::{Event, Parser};
 use yaml_rust2::scanner::TScalarStyle;
@@ -52,7 +51,7 @@ impl Value {
 
     fn from_string(text: &str) -> Self {
         let lines = |text: &str| text.split('\n').map(str::to_owned).collect();
-        match parse_document(text) {
+        match document_format(text) {
             Some(Format::Json) => Self::Block(Format::Json, pretty_json(text)),
             // A YAML document's final line break ends its last line, unlike text, whose every line shows.
             Some(format) => Self::Block(format, lines(text.strip_suffix('\n').unwrap_or(text))),
@@ -155,11 +154,13 @@ fn pretty_json(text: &str) -> Vec<String> {
     lines
 }
 
-/// The format of a string holding a JSON or YAML object or array, as long as its YAML reads without loss.
-fn parse_document(text: &str) -> Option<Format> {
+/// The format of a string holding a JSON object or array, or a multi-line YAML one that reads without loss.
+fn document_format(text: &str) -> Option<Format> {
     if let Ok(raw) = serde_json::from_str::<Box<serde_json::value::RawValue>>(text) {
-        let value = parse_json(raw.get(), 0).ok()?;
-        return matches!(value, tf::Value::Object(_) | tf::Value::Array(_)).then_some(Format::Json);
+        return raw.get().starts_with(['{', '[']).then_some(Format::Json);
+    }
+    if !text.contains('\n') {
+        return None;
     }
     // The event stream retains duplicate keys and tags that a loaded YAML map can discard.
     let mut parser = Parser::new_from_str(text);
@@ -296,6 +297,14 @@ fn line(text: String, kind: LineKind) -> ValueLine {
     ValueLine { text, kind }
 }
 
+fn header(key: &str, format: Format, indent: usize) -> ValueLine {
+    ValueLine::unchanged(format!(
+        "{}{key}: {}",
+        INDENT_STR.repeat(indent),
+        format.marker()
+    ))
+}
+
 fn named(key: &str, value: &Value, indent: usize) -> Vec<ValueLine> {
     let prefix = format!("{}{key}:", INDENT_STR.repeat(indent));
     match value {
@@ -314,10 +323,7 @@ fn named(key: &str, value: &Value, indent: usize) -> Vec<ValueLine> {
             result
         }
         Value::Block(format, lines) => {
-            let mut result = vec![ValueLine::unchanged(format!(
-                "{prefix} {}",
-                format.marker()
-            ))];
+            let mut result = vec![header(key, *format, indent)];
             result.extend(lines.iter().map(|text| {
                 ValueLine::unchanged(format!("{}{text}", INDENT_STR.repeat(indent + 1)))
             }));
@@ -608,11 +614,7 @@ fn text(
     indent: usize,
     show: bool,
 ) -> Vec<ValueLine> {
-    let mut result = vec![ValueLine::unchanged(format!(
-        "{}{key}: {}",
-        INDENT_STR.repeat(indent),
-        format.marker()
-    ))];
+    let mut result = vec![header(key, format, indent)];
     let mut hidden = false;
     for (left, right) in alignment(before, after, PartialEq::eq) {
         let (text, kind) = match (left, right) {
@@ -667,58 +669,5 @@ pub(super) fn render_value_lines(
             LineKind::Added,
         ),
         (None, None) => Vec::new(),
-    }
-}
-
-fn parse_json(text: &str, depth: usize) -> Result<tf::Value, serde_json::Error> {
-    struct Visitor {
-        depth: usize,
-    }
-    impl<'de> serde::de::Visitor<'de> for Visitor {
-        type Value = tf::Value;
-
-        fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-            formatter.write_str("a supported document value")
-        }
-
-        fn visit_seq<A: serde::de::SeqAccess<'de>>(
-            self,
-            mut sequence: A,
-        ) -> Result<Self::Value, A::Error> {
-            let mut values = Vec::new();
-            while let Some(raw) = sequence.next_element::<Box<serde_json::value::RawValue>>()? {
-                values
-                    .push(parse_json(raw.get(), self.depth + 1).map_err(serde::de::Error::custom)?);
-            }
-            Ok(tf::Value::Array(values))
-        }
-
-        fn visit_map<A: serde::de::MapAccess<'de>>(
-            self,
-            mut map: A,
-        ) -> Result<Self::Value, A::Error> {
-            let mut values = tf::ValueMap::new();
-            while let Some(key) = map.next_key::<String>()? {
-                if values.contains_key(&key) {
-                    return Err(serde::de::Error::custom("duplicate key"));
-                }
-                let raw = map.next_value::<Box<serde_json::value::RawValue>>()?;
-                let value =
-                    parse_json(raw.get(), self.depth + 1).map_err(serde::de::Error::custom)?;
-                values.insert(key, value);
-            }
-            Ok(tf::Value::Object(values))
-        }
-    }
-    if depth > MAX_DOCUMENT_DEPTH {
-        return Err(serde::de::Error::custom("document too deep"));
-    }
-    let mut deserializer = serde_json::Deserializer::from_str(text);
-    match text.as_bytes()[0] {
-        b'{' => deserializer.deserialize_map(Visitor { depth }),
-        b'[' => deserializer.deserialize_seq(Visitor { depth }),
-        b'"' => serde_json::from_str(text).map(tf::Value::String),
-        _ => parse_scalar(text.to_owned(), TScalarStyle::Plain)
-            .ok_or_else(|| serde::de::Error::custom("unsupported number")),
     }
 }

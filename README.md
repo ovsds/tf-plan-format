@@ -138,7 +138,7 @@ A value is an object with its type in `op` and its content in `path`, such as `{
 
 All arguments are named, for example `render_action(action=change.action)`.
 
-- `render_values(before, after, show_changed_values=true)`: renders two attribute maps, a `name: value` or `name: before -> after` line per attribute; with one side `null`, lists the other side's values. A multi-line string renders as a `name: |` block of its lines, and a string holding a JSON or YAML object or array as a `name: | json` or `name: | yaml` block, JSON pretty-printed with its keys in their order and YAML as written; a changed block shows its removed and added lines, so a JSON whitespace change is none (from 0.5.0). `show_changed_values=false` leaves out what did not change.
+- `render_values(before, after, show_changed_values=true)`: renders two attribute maps, a `name: value` or `name: before -> after` line per attribute; with one side `null`, lists the other side's values. A multi-line string renders as a `name: |` block of its lines, and a string holding a JSON object or array, or a multi-line YAML one, as a `name: | json` or `name: | yaml` block, JSON pretty-printed with its keys in their order and YAML as written; a changed block shows its removed and added lines, so a JSON whitespace change is none (from 0.5.0). `show_changed_values=false` leaves out what did not change.
 - `render_diff_values(before, after, show_changed_values=true)` (from 0.4.0): the lines of `render_values`, each prefixed with `+`, `-`, `!` or a space and then a space for a `diff` code block, as the `github` command renders them.
 - `render_action(action)`: the action's icon.
 - `render_actions(actions)`: the icons of a list of actions, deduplicated and sorted.
