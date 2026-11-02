@@ -170,7 +170,17 @@
 !       port: 80 -> 443
       - name: "ssh"
         port: 22
-! output: {names: ["a", "b", "c"], ports: [{name: "http", port: 80}, {name: "ssh", port: 22}]} -> (known after apply)
+- output:
+-   names:
+-     - "a"
+-     - "b"
+-     - "c"
+-   ports:
+-     - name: "http"
+-       port: 80
+-     - name: "ssh"
+-       port: 22
++ output: (known after apply)
   triggers_replace: null
 ```
 
@@ -192,7 +202,17 @@
 !       port: 80 -> 443
       - name: "ssh"
         port: 22
-! output: {names: ["a", "b", "c"], ports: [{name: "http", port: 80}, {name: "ssh", port: 22}]} -> (known after apply)
+- output:
+-   names:
+-     - "a"
+-     - "b"
+-     - "c"
+-   ports:
+-     - name: "http"
+-       port: 80
+-     - name: "ssh"
+-       port: 22
++ output: (known after apply)
   triggers_replace: null
 ```
 

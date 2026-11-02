@@ -1048,7 +1048,60 @@ string: "abc" -> (known after apply)"#;
 
             let result = test_show_changed_values(Some(before), Some(after), false);
 
-            let expected = r#"object: {a: "x", b: [1]} -> (known after apply)"#;
+            let expected = r#"object:
+  a: "x"
+  b:
+    - 1
+object: (known after apply)"#;
+            pretty_assertions::assert_eq!(result, expected);
+        }
+
+        #[test]
+        fn unknown_to_array() {
+            let mut before = std::collections::HashMap::new();
+            before.insert("array".to_string(), tf::Value::Unknown);
+            let mut after = std::collections::HashMap::new();
+            after.insert("array".to_string(), tf::Value::Array(strings(&["a", "b"])));
+
+            let result = test_show_changed_values(Some(before), Some(after), false);
+
+            let expected = r#"array: (known after apply)
+array:
+  - "a"
+  - "b""#;
+            pretty_assertions::assert_eq!(result, expected);
+        }
+
+        #[test]
+        fn empty_object_to_unknown() {
+            let mut before = std::collections::HashMap::new();
+            before.insert(
+                "object".to_string(),
+                tf::Value::Object(std::collections::HashMap::new()),
+            );
+            let mut after = std::collections::HashMap::new();
+            after.insert("object".to_string(), tf::Value::Unknown);
+
+            let result = test_show_changed_values(Some(before), Some(after), false);
+
+            pretty_assertions::assert_eq!(result, "object: {} -> (known after apply)");
+        }
+
+        #[test]
+        fn array_object_element_to_unknown() {
+            let result = test_array(
+                vec![
+                    tf::Value::String("a".to_string()),
+                    object(vec![("name", tf::Value::String("x".to_string()))]),
+                ],
+                vec![tf::Value::String("a".to_string()), tf::Value::Unknown],
+                true,
+            );
+
+            let expected = r#"array:
+  - "a"
+  - name: "x"
+  - (known after apply)"#;
             pretty_assertions::assert_eq!(result, expected);
         }
 
@@ -1187,6 +1240,23 @@ string: "abc" -> (known after apply)"#;
 !   a: 1
   object:
 !   inner: 1 -> 2"#;
+            pretty_assertions::assert_eq!(result, expected);
+        }
+
+        #[test]
+        fn object_to_unknown() {
+            let before = values(vec![(
+                "metadata",
+                object(vec![(
+                    "values",
+                    tf::Value::String("{\"a\": 1}".to_string()),
+                )]),
+            )]);
+            let after = values(vec![("metadata", tf::Value::Unknown)]);
+
+            let result = test(Some(before), Some(after), false);
+
+            let expected = "- metadata:\n-   values:\n-     a: 1\n+ metadata: (known after apply)";
             pretty_assertions::assert_eq!(result, expected);
         }
 

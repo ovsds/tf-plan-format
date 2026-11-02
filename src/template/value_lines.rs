@@ -345,6 +345,29 @@ fn item(mut lines: Vec<ValueLine>, indent: usize) -> Vec<ValueLine> {
     lines
 }
 
+/// An object or array changing to or from a value of another kind, such as `(known after apply)`, when either spans
+/// several lines: the old lines marked removed, then the new ones marked added
+fn replaced(
+    key: &str,
+    before: &Value,
+    after: &Value,
+    indent: usize,
+    parse: bool,
+) -> Option<(Vec<ValueLine>, Vec<ValueLine>)> {
+    let collection = |value: &Value| matches!(value, Value::Object(..) | Value::Array(_));
+    if before.is_null() || after.is_null() || collection(before) == collection(after) {
+        return None;
+    }
+    let removed = named(key, before, indent, parse);
+    let added = named(key, after, indent, parse);
+    (removed.len() > 1 || added.len() > 1).then(|| {
+        (
+            mark(removed, LineKind::Removed),
+            mark(added, LineKind::Added),
+        )
+    })
+}
+
 fn object(
     before: &BTreeMap<String, Value>,
     after: &BTreeMap<String, Value>,
@@ -465,6 +488,12 @@ fn changed(
                     return mark(named(key, value, indent, parse), LineKind::Changed);
                 }
             }
+            if let Some((removed, added)) = before
+                .zip(after)
+                .and_then(|(before, after)| replaced(key, before, after, indent, parse))
+            {
+                return removed.into_iter().chain(added).collect();
+            }
             vec![ValueLine::changed(format!(
                 "{}{key}: {} -> {}",
                 INDENT_STR.repeat(indent),
@@ -564,6 +593,11 @@ fn array(
             let after_value = added.get(i).map(|i| &after[*i]);
             let before = before_value.unwrap_or(&null);
             let after = after_value.unwrap_or(&null);
+            if let Some((removed, added)) = replaced("", before, after, indent + 1, parse) {
+                result.extend(item(removed, indent));
+                result.extend(item(added, indent));
+                continue;
+            }
             let lines = changed(
                 "",
                 if parse { Some(before) } else { before_value },

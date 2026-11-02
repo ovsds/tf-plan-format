@@ -473,11 +473,11 @@ mod tests {
             assert!(!kept.contains(COLLAPSED));
             assert_eq!(1, result.matches(COLLAPSED).count());
             assert_eq!(
-                "_Output limited to 4742 bytes: values of 1 change not shown_",
+                "_Output limited to 4852 bytes: values of 1 change not shown_",
                 get_note(&result)
             );
             assert!(result.ends_with(
-                "</details>\n\n_Output limited to 4742 bytes: values of 1 change not shown_\n"
+                "</details>\n\n_Output limited to 4852 bytes: values of 1 change not shown_\n"
             ));
         }
 
