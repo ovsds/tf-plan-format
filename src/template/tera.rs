@@ -1087,7 +1087,10 @@ array:
 
             let result = test_show_changed_values(Some(before), Some(after), false);
 
-            let expected = r#"object: "{\"a\": \"x\"}"
+            let expected = r#"object: | json
+  {
+    "a": "x"
+  }
 object:
   a: "x""#;
             pretty_assertions::assert_eq!(result, expected);
@@ -1290,7 +1293,7 @@ object:
 
             let result = test(Some(before), Some(after), false);
 
-            let expected = "- metadata:\n-   values:\n-     a: 1\n+ metadata: (known after apply)";
+            let expected = "- metadata:\n-   values: | json\n-     {\n-       \"a\": 1\n-     }\n+ metadata: (known after apply)";
             pretty_assertions::assert_eq!(result, expected);
         }
 
