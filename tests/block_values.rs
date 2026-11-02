@@ -341,13 +341,40 @@ fn nested_documents_create_update_and_stay_unchanged_by_line() {
 
 #[test]
 fn plain_strings_inside_documents_stay_as_written() {
-    for document in [
-        r#"{"a":"plain","b":"{not json","c":"Note: hi","d":"42"}"#,
-        "a: 'plain'\nb: \"{not json\"\nc: 'Note: hi'\nd: |\n  just\n  text\n",
+    for (document, expected) in [
+        (
+            r#"{"a":"plain","b":"{not json","c":"Note: hi","d":"42"}"#,
+            "value: | json\n  {\n    \"a\": \"plain\",\n    \"b\": \"{not json\",\n    \"c\": \"Note: hi\",\n    \"d\": \"42\"\n  }",
+        ),
+        (
+            "a: 'plain'\nb: \"{not json\"\nc: 'Note: hi'\nd: |\n  just\n  text\n",
+            "value: | yaml\n  a: 'plain'\n  b: \"{not json\"\n  c: 'Note: hi'\n  d: |\n    just\n    text",
+        ),
     ] {
-        let rendered = render_values(None, Some(&values(string(document))), true);
-        assert_eq!(1, rendered.matches("| ").count(), "{rendered}");
+        assert_eq!(
+            expected,
+            render_values(None, Some(&values(string(document))), true)
+        );
     }
+}
+
+#[test]
+fn crlf_block_scalars_render_as_nested_blocks() {
+    assert_eq!(
+        "value: | yaml\n  a: | json\n    [\n      1\n    ]",
+        render_values(None, Some(&values(string("a: |\r\n  [1]\r\n"))), true)
+    );
+}
+
+#[test]
+fn long_lines_of_flow_collections_render_in_linear_time() {
+    let document = format!("a:\n  x: [{}]\n", "[], ".repeat(200_000));
+    let rendered = render_values(None, Some(&values(string(&document))), true);
+    assert!(
+        rendered.starts_with("value: | yaml\n  a:\n    x: [[], "),
+        "{}",
+        &rendered[..40]
+    );
 }
 
 #[test]

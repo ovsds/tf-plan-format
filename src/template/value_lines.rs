@@ -107,7 +107,7 @@ impl Value {
 
 /// The lines of a string holding a JSON or YAML document, with the documents its strings hold expanded.
 fn document_lines(text: &str, depth: usize) -> Option<(Format, Vec<String>)> {
-    match parse_document(text, depth < MAX_DOCUMENT_DEPTH)? {
+    match parse_document(text)? {
         Document::Json => Some((Format::Json, pretty_json(text, depth))),
         Document::Yaml(strings) => Some((Format::Yaml, yaml_lines(text, strings, depth))),
     }
@@ -116,11 +116,15 @@ fn document_lines(text: &str, depth: usize) -> Option<(Format, Vec<String>)> {
 /// The lines of a document string held in a document `depth` levels deep, rendered one level deeper; past the depth
 /// limit the string stays as written.
 fn nested_document(text: &str, depth: usize) -> Option<(Format, Vec<String>)> {
-    let candidate = text.trim_start().starts_with(['{', '[']) || text.contains('\n');
-    if depth >= MAX_DOCUMENT_DEPTH || !candidate {
+    if depth >= MAX_DOCUMENT_DEPTH || !may_be_document(text) {
         return None;
     }
     document_lines(text, depth + 1)
+}
+
+/// Whether a string can hold a document: JSON starts with a bracket, YAML spans several lines.
+fn may_be_document(text: &str) -> bool {
+    text.trim_start().starts_with(['{', '[']) || text.contains('\n')
 }
 
 /// The header line of a nested document under `prefix`, its key or item marker, then its lines indented by `indent`.
@@ -340,7 +344,7 @@ impl YamlString {
 
 /// The text before a block scalar's `|` or `>` indicator on its line, unless the indicator sets the indentation.
 fn block_indicator_prefix(line: &str) -> Option<String> {
-    let characters: Vec<char> = line.chars().collect();
+    let characters: Vec<char> = line.strip_suffix('\r').unwrap_or(line).chars().collect();
     (1..characters.len()).find_map(|i| {
         if !matches!(characters[i], '|' | '>') || characters[i - 1] != ' ' {
             return None;
@@ -354,9 +358,9 @@ fn block_indicator_prefix(line: &str) -> Option<String> {
     })
 }
 
-/// The kind of a string holding a JSON object or array, or a multi-line YAML one that reads without loss; with
-/// `nested`, the YAML one's strings that may be documents.
-fn parse_document(text: &str, nested: bool) -> Option<Document> {
+/// The kind of a string holding a JSON object or array, or a multi-line YAML one that reads without loss, with the
+/// YAML one's strings that may be documents.
+fn parse_document(text: &str) -> Option<Document> {
     if let Ok(raw) = serde_json::from_str::<Box<serde_json::value::RawValue>>(text) {
         return raw.get().starts_with(['{', '[']).then_some(Document::Json);
     }
@@ -376,12 +380,8 @@ fn parse_document(text: &str, nested: bool) -> Option<Document> {
     }
     let mut reader = YamlReader {
         events: events.into_iter(),
-        source: if nested {
-            text.split('\n').collect()
-        } else {
-            Vec::new()
-        },
-        strings: nested.then(Vec::new),
+        characters: text.chars().collect(),
+        strings: Vec::new(),
     };
     if reader.event()? != Event::StreamStart || reader.event()? != Event::DocumentStart {
         return None;
@@ -391,16 +391,17 @@ fn parse_document(text: &str, nested: bool) -> Option<Document> {
         return None;
     }
     matches!(value, tf::Value::Object(_) | tf::Value::Array(_))
-        .then(|| Document::Yaml(reader.strings.unwrap_or_default()))
+        .then_some(Document::Yaml(reader.strings))
 }
 
-struct YamlReader<'a> {
+struct YamlReader {
     events: std::vec::IntoIter<(Event, Marker)>,
-    source: Vec<&'a str>,
-    strings: Option<Vec<YamlString>>,
+    /// The source by character, as markers index it.
+    characters: Vec<char>,
+    strings: Vec<YamlString>,
 }
 
-impl YamlReader<'_> {
+impl YamlReader {
     fn event(&mut self) -> Option<Event> {
         self.events.next().map(|(event, _)| event)
     }
@@ -412,9 +413,8 @@ impl YamlReader<'_> {
 
     /// Whether a collection starting at `marker` is in flow style.
     fn flow(&self, marker: Marker) -> bool {
-        self.source
-            .get(marker.line().wrapping_sub(1))
-            .and_then(|line| line.chars().nth(marker.col()))
+        self.characters
+            .get(marker.index())
             .is_some_and(|character| matches!(character, '[' | '{'))
     }
 
@@ -431,17 +431,13 @@ impl YamlReader<'_> {
         }
         match event {
             Event::Scalar(text, style, 0, None) => {
-                if let Some(strings) = self.strings.as_mut().filter(|_| held) {
-                    if style != TScalarStyle::Plain
-                        && (text.trim_start().starts_with(['{', '[']) || text.contains('\n'))
-                    {
-                        strings.push(YamlString {
-                            text: text.clone(),
-                            style,
-                            line: marker.line() - 1,
-                            column: marker.col(),
-                        });
-                    }
+                if held && style != TScalarStyle::Plain && may_be_document(&text) {
+                    self.strings.push(YamlString {
+                        text: text.clone(),
+                        style,
+                        line: marker.line() - 1,
+                        column: marker.col(),
+                    });
                 }
                 parse_scalar(text, style)
             }
