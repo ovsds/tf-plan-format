@@ -234,11 +234,143 @@ fn scalar_roots_stay_strings() {
 }
 
 #[test]
-fn document_string_leaves_are_not_recursively_interpreted() {
-    let map = values(string(r#"{"embedded":"{\"a\":1}","yaml":"a: 1\nb: 2"}"#));
+fn json_document_strings_render_as_nested_blocks() {
+    let map = values(string(
+        r#"{"embedded":"{\"a\":1}","yaml":"a: 1\nb: 2","items":["[1]","x"],"plain":"x"}"#,
+    ));
     assert_eq!(
-        "value: | json\n  {\n    \"embedded\": \"{\\\"a\\\":1}\",\n    \"yaml\": \"a: 1\\nb: 2\"\n  }",
+        r#"value: | json
+  {
+    "embedded": | json
+      {
+        "a": 1
+      }
+    "yaml": | yaml
+      a: 1
+      b: 2
+    "items": [
+      | json
+        [
+          1
+        ]
+      "x"
+    ],
+    "plain": "x"
+  }"#,
         render_values(None, Some(&map), true)
+    );
+}
+
+#[test]
+fn yaml_document_strings_render_as_nested_blocks() {
+    let document = "node-agent:\n  node-agent.json: '{\"a\":1,\"b\":[2]}'\n  script: |\n    a: 1\n    b: 2\n  list:\n    - \"[1]\"\n    - k: |-\n        {\"q\": 1}\n  flow: ['{\"a\":1}']\n";
+    assert_eq!(
+        r#"value: | yaml
+  node-agent:
+    node-agent.json: | json
+      {
+        "a": 1,
+        "b": [
+          2
+        ]
+      }
+    script: | yaml
+      a: 1
+      b: 2
+    list:
+      - | json
+        [
+          1
+        ]
+      - k: | json
+          {
+            "q": 1
+          }
+    flow: ['{"a":1}']"#,
+        render_values(None, Some(&values(string(document))), true)
+    );
+}
+
+#[test]
+fn twice_nested_documents_render_as_nested_blocks() {
+    let map = values(string(
+        "config:\n  inner: '{\"json\":\"{\\\"a\\\":[1]}\"}'\n",
+    ));
+    assert_eq!(
+        r#"value: | yaml
+  config:
+    inner: | json
+      {
+        "json": | json
+          {
+            "a": [
+              1
+            ]
+          }
+      }"#,
+        render_values(None, Some(&map), true)
+    );
+}
+
+#[test]
+fn nested_documents_create_update_and_stay_unchanged_by_line() {
+    let before = "a:\n  j: '{\"x\":1,\"y\":2}'\n";
+    let after = "a:\n  j: '{\"x\":3,\"y\":2}'\n";
+    let created = render_diff_values(None, Some(&values(string(before))), false);
+    assert_eq!(
+        "+ value: | yaml\n+   a:\n+     j: | json\n+       {\n+         \"x\": 1,\n+         \"y\": 2\n+       }",
+        created
+    );
+    assert_eq!(
+        "  value: | yaml\n    a:\n      j: | json\n        {\n-         \"x\": 1,\n+         \"x\": 3,\n          \"y\": 2\n        }",
+        diff(before, after, true)
+    );
+    assert_eq!(
+        "  value: | yaml\n    ...\n-         \"x\": 1,\n+         \"x\": 3,\n    ...",
+        diff(before, after, false)
+    );
+    assert_eq!(
+        "",
+        diff(before, "a:\n  j: '{ \"x\": 1, \"y\": 2 }'\n", false)
+    );
+    assert_eq!(
+        "  value: | json\n    {\n      \"j\": | json\n        {\n-         \"x\": 1\n+         \"x\": 2\n        }\n    }",
+        diff(r#"{"j":"{\"x\":1}"}"#, r#"{"j":"{\"x\":2}"}"#, true)
+    );
+}
+
+#[test]
+fn plain_strings_inside_documents_stay_as_written() {
+    for document in [
+        r#"{"a":"plain","b":"{not json","c":"Note: hi","d":"42"}"#,
+        "a: 'plain'\nb: \"{not json\"\nc: 'Note: hi'\nd: |\n  just\n  text\n",
+    ] {
+        let rendered = render_values(None, Some(&values(string(document))), true);
+        assert_eq!(1, rendered.matches("| ").count(), "{rendered}");
+    }
+}
+
+#[test]
+fn nested_documents_stop_at_the_depth_limit() {
+    let mut document = "a: 1\nb: 2\n".to_string();
+    for _ in 0..129 {
+        document = format!(
+            "x: |\n{}",
+            document
+                .lines()
+                .map(|line| format!("  {line}\n"))
+                .collect::<String>()
+        );
+    }
+    let rendered = render_values(None, Some(&values(string(&document))), true);
+    assert!(rendered.starts_with("value: | yaml\n"), "{rendered}");
+    assert_eq!(128, rendered.matches("x: | yaml").count());
+    assert_eq!(
+        1,
+        rendered
+            .lines()
+            .filter(|line| line.ends_with("x: |"))
+            .count()
     );
 }
 
