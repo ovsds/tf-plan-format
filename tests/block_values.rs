@@ -367,13 +367,53 @@ fn crlf_block_scalars_render_as_nested_blocks() {
 }
 
 #[test]
-fn long_lines_of_flow_collections_render_in_linear_time() {
+fn long_lines_of_flow_collections_render() {
     let document = format!("a:\n  x: [{}]\n", "[], ".repeat(200_000));
     let rendered = render_values(None, Some(&values(string(&document))), true);
     assert!(
         rendered.starts_with("value: | yaml\n  a:\n    x: [[], "),
         "{}",
-        &rendered[..40]
+        rendered.chars().take(40).collect::<String>()
+    );
+}
+
+#[test]
+fn nested_documents_after_multibyte_block_scalars_keep_their_places() {
+    for text in ["eeee", "éééé"] {
+        let document = format!("t: |\n  {text}\nb:\n  k: '[1]'\n");
+        assert_eq!(
+            format!("value: | yaml\n  t: |\n    {text}\n  b:\n    k: | json\n      [\n        1\n      ]"),
+            render_values(None, Some(&values(string(&document))), true)
+        );
+    }
+    let document = "t: |\n  éééééé\nflow: {\n  k: '{\"a\":1}'\n  }\n";
+    assert_eq!(
+        format!(
+            "value: | yaml\n{}",
+            document
+                .trim_end()
+                .lines()
+                .map(|line| format!("  {line}"))
+                .collect::<Vec<_>>()
+                .join("\n")
+        ),
+        render_values(None, Some(&values(string(document))), true)
+    );
+}
+
+#[test]
+fn json_deeper_than_the_depth_limit_stays_as_written() {
+    let deep = format!("{}{}", "[".repeat(10_000), "]".repeat(10_000));
+    let limit = format!("{}{}", "[".repeat(128), "]".repeat(128));
+    assert_eq!(
+        format!("value: \"{deep}\""),
+        render_values(None, Some(&values(string(&deep))), true)
+    );
+    assert!(render_values(None, Some(&values(string(&limit))), true).starts_with("value: | json\n"));
+    let nested = serde_json::to_string(&serde_json::json!({ "a": deep })).unwrap();
+    assert_eq!(
+        format!("value: | json\n  {{\n    \"a\": \"{deep}\"\n  }}"),
+        render_values(None, Some(&values(string(&nested))), true)
     );
 }
 

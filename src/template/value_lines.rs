@@ -108,7 +108,7 @@ impl Value {
 /// The lines of a string holding a JSON or YAML document, with the documents its strings hold expanded.
 fn document_lines(text: &str, depth: usize) -> Option<(Format, Vec<String>)> {
     match parse_document(text)? {
-        Document::Json => Some((Format::Json, pretty_json(text, depth))),
+        Document::Json => Some((Format::Json, pretty_json(text, depth)?)),
         Document::Yaml(strings) => Some((Format::Yaml, yaml_lines(text, strings, depth))),
     }
 }
@@ -144,8 +144,8 @@ fn nest(
 }
 
 /// Pretty-prints valid JSON with 2-space indentation, keeping its keys' order and its tokens as written; a string
-/// value holding a document renders as its block.
-fn pretty_json(text: &str, depth: usize) -> Vec<String> {
+/// value holding a document renders as its block. JSON nested deeper than the depth limit is no document.
+fn pretty_json(text: &str, depth: usize) -> Option<Vec<String>> {
     let indent = |level: usize| " ".repeat(2 * level);
     let mut lines = Vec::new();
     let mut line = String::new();
@@ -189,6 +189,9 @@ fn pretty_json(text: &str, depth: usize) -> Vec<String> {
                     line.push(close);
                 } else {
                     level += 1;
+                    if level > MAX_DOCUMENT_DEPTH {
+                        return None;
+                    }
                     lines.push(std::mem::replace(&mut line, indent(level)));
                 }
             }
@@ -213,7 +216,7 @@ fn pretty_json(text: &str, depth: usize) -> Vec<String> {
         }
     }
     lines.push(line);
-    lines
+    Some(lines)
 }
 
 /// The lines of a YAML document as written, with each string scalar holding a document replaced by its block.
@@ -380,13 +383,13 @@ fn parse_document(text: &str) -> Option<Document> {
     }
     let mut reader = YamlReader {
         events: events.into_iter(),
-        characters: text.chars().collect(),
+        source: text.split('\n').collect(),
         strings: Vec::new(),
     };
     if reader.event()? != Event::StreamStart || reader.event()? != Event::DocumentStart {
         return None;
     }
-    let value = reader.node(0, false)?;
+    let value = reader.node(0, Place::Block)?;
     if reader.event()? != Event::DocumentEnd || reader.event()? != Event::StreamEnd {
         return None;
     }
@@ -394,44 +397,62 @@ fn parse_document(text: &str) -> Option<Document> {
         .then_some(Document::Yaml(reader.strings))
 }
 
-struct YamlReader {
+/// Where a YAML node is: the root or a key of a block collection, a key's value or an item of one, or in a flow
+/// collection.
+#[derive(Clone, Copy, PartialEq)]
+enum Place {
+    Block,
+    Held,
+    Flow,
+}
+
+struct YamlReader<'a> {
     events: std::vec::IntoIter<(Event, Marker)>,
-    /// The source by character, as markers index it.
-    characters: Vec<char>,
+    source: Vec<&'a str>,
     strings: Vec<YamlString>,
 }
 
-impl YamlReader {
+impl YamlReader<'_> {
     fn event(&mut self) -> Option<Event> {
         self.events.next().map(|(event, _)| event)
     }
 
-    fn node(&mut self, depth: usize, held: bool) -> Option<tf::Value> {
+    fn node(&mut self, depth: usize, place: Place) -> Option<tf::Value> {
         let (event, marker) = self.events.next()?;
-        self.parse(event, marker, depth, held)
+        self.parse(event, marker, depth, place)
     }
 
-    /// Whether a collection starting at `marker` is in flow style.
-    fn flow(&self, marker: Marker) -> bool {
-        self.characters
-            .get(marker.index())
-            .is_some_and(|character| matches!(character, '[' | '{'))
+    /// The places of a collection's keys and of its values or items: flow inside a flow collection, otherwise by the
+    /// bracket it starts with. Markers' line and column stay in characters where a marker's index does not, after a
+    /// block scalar with multibyte text; the column scan runs only outside flow collections, where few collections
+    /// share a line.
+    fn places(&self, marker: Marker, place: Place) -> (Place, Place) {
+        let flow = place == Place::Flow
+            || self
+                .source
+                .get(marker.line().wrapping_sub(1))
+                .and_then(|line| line.chars().nth(marker.col()))
+                .is_some_and(|character| matches!(character, '[' | '{'));
+        if flow {
+            (Place::Flow, Place::Flow)
+        } else {
+            (Place::Block, Place::Held)
+        }
     }
 
-    /// Reads a node; `held` marks a key's value or an item of a block collection.
     fn parse(
         &mut self,
         event: Event,
         marker: Marker,
         depth: usize,
-        held: bool,
+        place: Place,
     ) -> Option<tf::Value> {
         if depth > MAX_DOCUMENT_DEPTH {
             return None;
         }
         match event {
             Event::Scalar(text, style, 0, None) => {
-                if held && style != TScalarStyle::Plain && may_be_document(&text) {
+                if place == Place::Held && style != TScalarStyle::Plain && may_be_document(&text) {
                     self.strings.push(YamlString {
                         text: text.clone(),
                         style,
@@ -442,7 +463,7 @@ impl YamlReader {
                 parse_scalar(text, style)
             }
             Event::SequenceStart(0, None) => {
-                let held = !self.flow(marker);
+                let (_, held) = self.places(marker, place);
                 let mut array = Vec::new();
                 loop {
                     let (event, marker) = self.events.next()?;
@@ -454,15 +475,14 @@ impl YamlReader {
                 Some(tf::Value::Array(array))
             }
             Event::MappingStart(0, None) => {
-                let held = !self.flow(marker);
+                let (keys, held) = self.places(marker, place);
                 let mut map = tf::ValueMap::new();
                 loop {
                     let (event, marker) = self.events.next()?;
                     if event == Event::MappingEnd {
                         break;
                     }
-                    let tf::Value::String(key) = self.parse(event, marker, depth + 1, false)?
-                    else {
+                    let tf::Value::String(key) = self.parse(event, marker, depth + 1, keys)? else {
                         return None;
                     };
                     if key == "<<" || map.contains_key(&key) {
