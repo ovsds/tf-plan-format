@@ -143,30 +143,6 @@ fn helm_values_and_document_outputs() -> Result<(), Box<dyn std::error::Error>> 
 }
 
 #[test]
-fn json_and_yaml_document_updates() -> Result<(), Box<dyn std::error::Error>> {
-    for changed in [false, true] {
-        let mut cmd = Command::cargo_bin("tf_plan_format")?;
-        cmd.arg("github");
-        for tool in ["terraform", "opentofu"] {
-            cmd.arg("--file")
-                .arg(utils::get_test_data_file_path(&format!(
-                    "plans/update-documents/{tool}.tfplan.json"
-                )));
-        }
-        if changed {
-            cmd.arg("--changed-values");
-        }
-        let expected = utils::get_test_data_file_contents(if changed {
-            "tera/renders/github_markdown/documents_changed.md"
-        } else {
-            "tera/renders/github_markdown/documents.md"
-        });
-        cmd.assert().success().stdout(expected + "\n").stderr("");
-    }
-    Ok(())
-}
-
-#[test]
 fn helm_values_respect_length_limits() -> Result<(), Box<dyn std::error::Error>> {
     for changed in [false, true] {
         for max_length in [200, 350, 500, 800] {

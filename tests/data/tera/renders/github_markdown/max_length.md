@@ -4,10 +4,7 @@
 
 ```diff
 @@ ✅ terraform_data.foo-bar @@
-+ id: (known after apply)
-+ input: "foo"
-+ output: (known after apply)
-+ triggers_replace: null
+ Values not shown to fit the length limit
 ```
 
 </details>
@@ -16,10 +13,7 @@
 
 ```diff
 @@ ✅ terraform_data.foo-bar @@
-+ id: (known after apply)
-+ input: "foo"
-+ output: (known after apply)
-+ triggers_replace: null
+ Values not shown to fit the length limit
 ```
 
 </details>
@@ -46,10 +40,7 @@
 
 ```diff
 @@ ❌ terraform_data.foo-bar @@
-- id: "7ab2f2ee-c808-082c-93c7-d2a00826c3e4"
-- input: "foo"
-- output: "foo"
-- triggers_replace: null
+ Values not shown to fit the length limit
 ```
 
 </details>
@@ -58,10 +49,7 @@
 
 ```diff
 @@ ❌ terraform_data.foo-bar @@
-- id: "96202d3f-5e6b-8c7f-8e5a-7d1599601bd8"
-- input: "foo"
-- output: "foo"
-- triggers_replace: null
+ Values not shown to fit the length limit
 ```
 
 </details>
@@ -70,8 +58,7 @@
 
 ```diff
 @@ 🔄 terraform_data.foo-bar @@
-! input: "foo" -> "bar"
-! output: "foo" -> (known after apply)
+ Values not shown to fit the length limit
 @@ ✅🔄❌ Outputs @@
  Values not shown to fit the length limit
 ```
@@ -82,8 +69,7 @@
 
 ```diff
 @@ 🔄 terraform_data.foo-bar @@
-! input: "foo" -> "bar"
-! output: "foo" -> (known after apply)
+ Values not shown to fit the length limit
 @@ ✅🔄❌ Outputs @@
  Values not shown to fit the length limit
 ```
@@ -94,8 +80,7 @@
 
 ```diff
 @@ 🔄 terraform_data.foo-bar @@
-! input: "foo" -> "bar"
-! output: "foo" -> (known after apply)
+ Values not shown to fit the length limit
 ```
 
 </details>
@@ -104,8 +89,7 @@
 
 ```diff
 @@ 🔄 terraform_data.foo-bar @@
-! input: "foo" -> "bar"
-! output: "foo" -> (known after apply)
+ Values not shown to fit the length limit
 ```
 
 </details>
@@ -114,9 +98,7 @@
 
 ```diff
 @@ ♻️ random_bytes.test @@
-! base64: sensitive -> sensitive (known after apply)
-! hex: sensitive -> sensitive (known after apply)
-! length: 4 -> 8
+ Values not shown to fit the length limit
 ```
 
 </details>
@@ -125,9 +107,7 @@
 
 ```diff
 @@ ♻️ random_bytes.test @@
-! base64: sensitive -> sensitive (known after apply)
-! hex: sensitive -> sensitive (known after apply)
-! length: 4 -> 8
+ Values not shown to fit the length limit
 ```
 
 </details>
@@ -150,12 +130,33 @@
 
 </details>
 <details>
+<summary>✅🔄 <b>update-documents/opentofu.tfplan.json</b> +1 ~1 −0</summary>
+
+```diff
+@@ 🔄 terraform_data.foo-bar @@
+ Values not shown to fit the length limit
+@@ ✅ terraform_data.id @@
+ Values not shown to fit the length limit
+```
+
+</details>
+<details>
+<summary>✅🔄 <b>update-documents/terraform.tfplan.json</b> +1 ~1 −0</summary>
+
+```diff
+@@ 🔄 terraform_data.foo-bar @@
+ Values not shown to fit the length limit
+@@ ✅ terraform_data.id @@
+ Values not shown to fit the length limit
+```
+
+</details>
+<details>
 <summary>🔄 <b>update/opentofu.tfplan.json</b> +0 ~1 −0</summary>
 
 ```diff
 @@ 🔄 terraform_data.foo-bar @@
-! input: "foo" -> "bar"
-! output: "foo" -> (known after apply)
+ Values not shown to fit the length limit
 ```
 
 </details>
@@ -170,13 +171,12 @@
 
 </details>
 <details>
-<summary>💤 No changes (4)</summary>
+<summary>💤 No changes (3)</summary>
 <blockquote>
 <div>💤 <b>no-op/opentofu.tfplan.json</b></div>
 <div>💤 <b>no-op/terraform.tfplan.json</b></div>
 <div>💤 <b>no-resources/opentofu.tfplan.json</b></div>
-<div>💤 <b>no-resources/terraform.tfplan.json</b></div>
 </blockquote>
 </details>
 
-_Output limited to 4000 bytes: values of 4 changes and outputs of 2 plans not shown_
+_Output limited to 4000 bytes: the last plan, values of 19 changes and outputs of 2 plans not shown_

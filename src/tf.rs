@@ -692,6 +692,7 @@ pub mod tests {
         Sensitive,
         Update,
         UpdateArray,
+        UpdateDocuments,
     }
 
     fn get_test_data_plans() -> Vec<(Tool, PlanType)> {
@@ -708,6 +709,7 @@ pub mod tests {
                 PlanType::Sensitive,
                 PlanType::Update,
                 PlanType::UpdateArray,
+                PlanType::UpdateDocuments,
             ] {
                 plans.push((tool, plan_type));
             }
@@ -752,6 +754,7 @@ pub mod tests {
             PlanType::Sensitive => "sensitive",
             PlanType::Update => "update",
             PlanType::UpdateArray => "update-array",
+            PlanType::UpdateDocuments => "update-documents",
         };
         return utils::test::get_test_data_file_path(&format!("plans/{folder}/{file}.tfplan.json"));
     }
@@ -1856,6 +1859,7 @@ pub mod tests {
                 terraform_sensitive, Tool::Terraform, PlanType::Sensitive
                 terraform_update, Tool::Terraform, PlanType::Update
                 terraform_update_array, Tool::Terraform, PlanType::UpdateArray
+                terraform_update_documents, Tool::Terraform, PlanType::UpdateDocuments
                 opentofu_create, Tool::OpenTofu, PlanType::Create
                 opentofu_delete, Tool::OpenTofu, PlanType::Delete
                 opentofu_delete_create, Tool::OpenTofu, PlanType::DeleteCreate
@@ -1866,6 +1870,7 @@ pub mod tests {
                 opentofu_sensitive, Tool::OpenTofu, PlanType::Sensitive
                 opentofu_update, Tool::OpenTofu, PlanType::Update
                 opentofu_update_array, Tool::OpenTofu, PlanType::UpdateArray
+                opentofu_update_documents, Tool::OpenTofu, PlanType::UpdateDocuments
             }
 
             #[test]
