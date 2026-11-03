@@ -2,7 +2,7 @@ use super::{key_line, mark, render_plaintext, LineKind, ValueLine, INDENT_STR};
 use crate::tf;
 use std::collections::{BTreeMap, BTreeSet};
 use yaml_rust2::parser::{Event, Parser};
-use yaml_rust2::scanner::TScalarStyle;
+use yaml_rust2::scanner::{Marker, TScalarStyle};
 
 const MAX_DIFF_CELLS: usize = 4_000_000;
 const MAX_DOCUMENT_DEPTH: usize = 128;
@@ -50,12 +50,11 @@ impl Value {
     }
 
     fn from_string(text: &str) -> Self {
-        let lines = |text: &str| text.split('\n').map(str::to_owned).collect();
-        match document_format(text) {
-            Some(Format::Json) => Self::Block(Format::Json, pretty_json(text)),
-            // A YAML document's final line break ends its last line, unlike text, whose every line shows.
-            Some(format) => Self::Block(format, lines(text.strip_suffix('\n').unwrap_or(text))),
-            None if text.contains('\n') => Self::Block(Format::Text, lines(text)),
+        match document_lines(text, 0) {
+            Some((format, lines)) => Self::Block(format, lines),
+            None if text.contains('\n') => {
+                Self::Block(Format::Text, text.split('\n').map(str::to_owned).collect())
+            }
             None => Self::String(text.to_owned()),
         }
     }
@@ -106,16 +105,58 @@ impl Value {
     }
 }
 
-/// Pretty-prints valid JSON with 2-space indentation, keeping its keys' order and its tokens as written.
-fn pretty_json(text: &str) -> Vec<String> {
-    let indent = |depth: usize| " ".repeat(2 * depth);
+/// The lines of a string holding a JSON or YAML document, with the documents its strings hold expanded.
+fn document_lines(text: &str, depth: usize) -> Option<(Format, Vec<String>)> {
+    match parse_document(text)? {
+        Document::Json => Some((Format::Json, pretty_json(text, depth)?)),
+        Document::Yaml(strings) => Some((Format::Yaml, yaml_lines(text, strings, depth))),
+    }
+}
+
+/// The lines of a document string held in a document `depth` levels deep, rendered one level deeper; past the depth
+/// limit the string stays as written.
+fn nested_document(text: &str, depth: usize) -> Option<(Format, Vec<String>)> {
+    if depth >= MAX_DOCUMENT_DEPTH || !may_be_document(text) {
+        return None;
+    }
+    document_lines(text, depth + 1)
+}
+
+/// Whether a string can hold a document: JSON starts with a bracket, YAML spans several lines.
+fn may_be_document(text: &str) -> bool {
+    text.trim_start().starts_with(['{', '[']) || text.contains('\n')
+}
+
+/// The header line of a nested document under `prefix`, its key or item marker, then its lines indented by `indent`.
+fn nest(
+    lines: &mut Vec<String>,
+    prefix: &str,
+    (format, nested): (Format, Vec<String>),
+    indent: usize,
+) {
+    lines.push(if prefix.trim().is_empty() {
+        format!("{prefix}{}", format.marker())
+    } else {
+        format!("{} {}", prefix.trim_end(), format.marker())
+    });
+    let indent = " ".repeat(indent);
+    lines.extend(nested.into_iter().map(|line| format!("{indent}{line}")));
+}
+
+/// Pretty-prints valid JSON with 2-space indentation, keeping its keys' order and its tokens as written; a string
+/// value holding a document renders as its block. JSON nested deeper than the depth limit is no document.
+fn pretty_json(text: &str, depth: usize) -> Option<Vec<String>> {
+    let indent = |level: usize| " ".repeat(2 * level);
     let mut lines = Vec::new();
     let mut line = String::new();
-    let mut depth = 0;
+    let mut level = 0;
+    // A nested document's block ends its line, so the comma or bracket after it starts the next one.
+    let mut after_block = false;
     let mut characters = text.chars().peekable();
     while let Some(character) = characters.next() {
         match character {
             '"' => {
+                let start = line.len();
                 line.push(character);
                 while let Some(character) = characters.next() {
                     line.push(character);
@@ -125,6 +166,21 @@ fn pretty_json(text: &str) -> Vec<String> {
                         _ => {}
                     }
                 }
+                while characters.next_if(char::is_ascii_whitespace).is_some() {}
+                let token = &line[start..];
+                if characters.peek() == Some(&':') || !token.contains(['{', '[', '\\']) {
+                    continue;
+                }
+                let Some(document) = serde_json::from_str::<String>(token)
+                    .ok()
+                    .and_then(|text| nested_document(&text, depth))
+                else {
+                    continue;
+                };
+                line.truncate(start);
+                nest(&mut lines, &line, document, 2 * (level + 1));
+                line.clear();
+                after_block = true;
             }
             '{' | '[' => {
                 line.push(character);
@@ -132,18 +188,27 @@ fn pretty_json(text: &str) -> Vec<String> {
                 if let Some(close) = characters.next_if(|c| matches!(c, '}' | ']')) {
                     line.push(close);
                 } else {
-                    depth += 1;
-                    lines.push(std::mem::replace(&mut line, indent(depth)));
+                    level += 1;
+                    if level > MAX_DOCUMENT_DEPTH {
+                        return None;
+                    }
+                    lines.push(std::mem::replace(&mut line, indent(level)));
                 }
             }
             '}' | ']' => {
-                depth -= 1;
-                lines.push(std::mem::replace(&mut line, indent(depth)));
+                level -= 1;
+                let previous = std::mem::replace(&mut line, indent(level));
+                if !std::mem::take(&mut after_block) {
+                    lines.push(previous);
+                }
                 line.push(character);
             }
             ',' => {
-                line.push(character);
-                lines.push(std::mem::replace(&mut line, indent(depth)));
+                if !std::mem::take(&mut after_block) {
+                    line.push(character);
+                    lines.push(line);
+                }
+                line = indent(level);
             }
             ':' => line.push_str(": "),
             character if character.is_ascii_whitespace() => {}
@@ -151,13 +216,156 @@ fn pretty_json(text: &str) -> Vec<String> {
         }
     }
     lines.push(line);
+    Some(lines)
+}
+
+/// The lines of a YAML document as written, with each string scalar holding a document replaced by its block.
+fn yaml_lines(text: &str, strings: Vec<YamlString>, depth: usize) -> Vec<String> {
+    // A YAML document's final line break ends its last line, unlike text, whose every line shows.
+    let source: Vec<&str> = text
+        .strip_suffix('\n')
+        .unwrap_or(text)
+        .split('\n')
+        .collect();
+    let mut lines = Vec::new();
+    let mut next = 0;
+    for string in strings {
+        let Some((header, prefix, end)) = string.span(&source) else {
+            continue;
+        };
+        if header < next {
+            continue;
+        }
+        let Some(document) = nested_document(&string.text, depth) else {
+            continue;
+        };
+        lines.extend(source[next..header].iter().map(|line| (*line).to_owned()));
+        // A key's document indents one level past the key, an item's to the item's content.
+        let content = prefix.trim_start_matches([' ', '-']);
+        let column = prefix.chars().count() - content.chars().count();
+        let indent = if content.is_empty() {
+            column
+        } else {
+            column + INDENT_STR.len()
+        };
+        nest(&mut lines, &prefix, document, indent);
+        next = end + 1;
+    }
+    lines.extend(source[next..].iter().map(|line| (*line).to_owned()));
     lines
 }
 
-/// The format of a string holding a JSON object or array, or a multi-line YAML one that reads without loss.
-fn document_format(text: &str) -> Option<Format> {
+enum Document {
+    Json,
+    /// A YAML document with the quoted and block string scalars its block collections hold that may be documents.
+    Yaml(Vec<YamlString>),
+}
+
+/// A quoted or block string scalar held by a YAML block mapping's key or a block sequence, where its text starts.
+struct YamlString {
+    text: String,
+    style: TScalarStyle,
+    line: usize,
+    column: usize,
+}
+
+impl YamlString {
+    /// The line its key or item marker is on, the text before the scalar there and its last line.
+    fn span(&self, source: &[&str]) -> Option<(usize, String, usize)> {
+        let text_line = *source.get(self.line)?;
+        match self.style {
+            TScalarStyle::SingleQuoted | TScalarStyle::DoubleQuoted => {
+                let prefix = text_line.chars().take(self.column).collect::<String>();
+                let end = self.quoted_end(source)?;
+                Self::marked(&prefix).then_some((self.line, prefix, end))
+            }
+            TScalarStyle::Literal | TScalarStyle::Folded => {
+                let blank = |line: &str| line.trim().is_empty();
+                let header = (0..self.line).rev().find(|&i| !blank(source[i]))?;
+                let prefix = block_indicator_prefix(source[header])?;
+                let end = (self.line..source.len())
+                    .take_while(|&i| {
+                        blank(source[i])
+                            || source[i].len() - source[i].trim_start_matches(' ').len()
+                                >= self.column
+                    })
+                    .filter(|&i| !blank(source[i]))
+                    .last()?;
+                Self::marked(&prefix).then_some((header, prefix, end))
+            }
+            TScalarStyle::Plain => None,
+        }
+    }
+
+    /// Whether the text before a scalar ends with its key or is only item markers.
+    fn marked(prefix: &str) -> bool {
+        let content = prefix.trim_start_matches([' ', '-']).trim_end();
+        content.is_empty() && prefix.contains('-') || content.ends_with(':')
+    }
+
+    /// The line a quoted scalar ends on, when only a comment follows it there.
+    fn quoted_end(&self, source: &[&str]) -> Option<usize> {
+        let single = self.style == TScalarStyle::SingleQuoted;
+        let quote = if single { '\'' } else { '"' };
+        let mut characters = source[self.line..]
+            .iter()
+            .enumerate()
+            .flat_map(|(i, text)| {
+                text.chars()
+                    .chain(Some('\n'))
+                    .map(move |character| (self.line + i, character))
+            })
+            .skip(self.column)
+            .peekable();
+        if characters.next()?.1 != quote {
+            return None;
+        }
+        let end = loop {
+            match characters.next()? {
+                (_, '\\') if !single => {
+                    characters.next();
+                }
+                (line, '\'') if single => {
+                    if characters
+                        .next_if(|(_, character)| *character == '\'')
+                        .is_none()
+                    {
+                        break line;
+                    }
+                }
+                (line, '"') if !single => break line,
+                _ => {}
+            }
+        };
+        let rest = characters
+            .map_while(|(_, character)| (character != '\n').then_some(character))
+            .collect::<String>();
+        let rest = rest.trim();
+        (rest.is_empty() || rest.starts_with('#')).then_some(end)
+    }
+}
+
+/// The text before a block scalar's `|` or `>` indicator on its line, unless the indicator sets the indentation.
+fn block_indicator_prefix(line: &str) -> Option<String> {
+    let characters: Vec<char> = line.strip_suffix('\r').unwrap_or(line).chars().collect();
+    (1..characters.len()).find_map(|i| {
+        if !matches!(characters[i], '|' | '>') || characters[i - 1] != ' ' {
+            return None;
+        }
+        let rest = characters[i + 1..]
+            .iter()
+            .skip_while(|character| matches!(character, '+' | '-'))
+            .skip_while(|character| **character == ' ')
+            .collect::<String>();
+        (rest.is_empty() || rest.starts_with('#')).then(|| characters[..i].iter().collect())
+    })
+}
+
+/// The kind of a string holding a JSON object or array, or a multi-line YAML one that reads without loss, with the
+/// YAML one's strings that may be documents.
+fn parse_document(text: &str) -> Option<Document> {
     if let Ok(raw) = serde_json::from_str::<Box<serde_json::value::RawValue>>(text) {
-        return raw.get().starts_with(['{', '[']).then_some(Format::Json);
+        return raw.get().starts_with(['{', '[']).then_some(Document::Json);
     }
     if !text.contains('\n') {
         return None;
@@ -166,67 +374,126 @@ fn document_format(text: &str) -> Option<Format> {
     let mut parser = Parser::new_from_str(text);
     let mut events = Vec::new();
     loop {
-        let (event, _) = parser.next_token().ok()?;
+        let (event, marker) = parser.next_token().ok()?;
         let end = event == Event::StreamEnd;
-        events.push(event);
+        events.push((event, marker));
         if end {
             break;
         }
     }
-    let mut events = events.into_iter();
-    if events.next()? != Event::StreamStart || events.next()? != Event::DocumentStart {
+    let mut reader = YamlReader {
+        events: events.into_iter(),
+        source: text.split('\n').collect(),
+        strings: Vec::new(),
+    };
+    if reader.event()? != Event::StreamStart || reader.event()? != Event::DocumentStart {
         return None;
     }
-    let value = parse_node(&mut events, 0)?;
-    if events.next()? != Event::DocumentEnd || events.next()? != Event::StreamEnd {
+    let value = reader.node(0, Place::Block)?;
+    if reader.event()? != Event::DocumentEnd || reader.event()? != Event::StreamEnd {
         return None;
     }
-    matches!(value, tf::Value::Object(_) | tf::Value::Array(_)).then_some(Format::Yaml)
+    matches!(value, tf::Value::Object(_) | tf::Value::Array(_))
+        .then_some(Document::Yaml(reader.strings))
 }
 
-fn parse_node(events: &mut impl Iterator<Item = Event>, depth: usize) -> Option<tf::Value> {
-    parse_event(events.next()?, events, depth)
+/// Where a YAML node is: the root or a key of a block collection, a key's value or an item of one, or in a flow
+/// collection.
+#[derive(Clone, Copy, PartialEq)]
+enum Place {
+    Block,
+    Held,
+    Flow,
 }
 
-fn parse_event(
-    event: Event,
-    events: &mut impl Iterator<Item = Event>,
-    depth: usize,
-) -> Option<tf::Value> {
-    if depth > MAX_DOCUMENT_DEPTH {
-        return None;
+struct YamlReader<'a> {
+    events: std::vec::IntoIter<(Event, Marker)>,
+    source: Vec<&'a str>,
+    strings: Vec<YamlString>,
+}
+
+impl YamlReader<'_> {
+    fn event(&mut self) -> Option<Event> {
+        self.events.next().map(|(event, _)| event)
     }
-    match event {
-        Event::Scalar(text, style, 0, None) => parse_scalar(text, style),
-        Event::SequenceStart(0, None) => {
-            let mut array = Vec::new();
-            loop {
-                let event = events.next()?;
-                if event == Event::SequenceEnd {
-                    break;
-                }
-                array.push(parse_event(event, events, depth + 1)?);
-            }
-            Some(tf::Value::Array(array))
+
+    fn node(&mut self, depth: usize, place: Place) -> Option<tf::Value> {
+        let (event, marker) = self.events.next()?;
+        self.parse(event, marker, depth, place)
+    }
+
+    /// The places of a collection's keys and of its values or items: flow inside a flow collection, otherwise by the
+    /// bracket it starts with. Markers' line and column stay in characters where a marker's index does not, after a
+    /// block scalar with multibyte text; the column scan runs only outside flow collections, where few collections
+    /// share a line.
+    fn places(&self, marker: Marker, place: Place) -> (Place, Place) {
+        let flow = place == Place::Flow
+            || self
+                .source
+                .get(marker.line().wrapping_sub(1))
+                .and_then(|line| line.chars().nth(marker.col()))
+                .is_some_and(|character| matches!(character, '[' | '{'));
+        if flow {
+            (Place::Flow, Place::Flow)
+        } else {
+            (Place::Block, Place::Held)
         }
-        Event::MappingStart(0, None) => {
-            let mut map = tf::ValueMap::new();
-            loop {
-                let event = events.next()?;
-                if event == Event::MappingEnd {
-                    break;
-                }
-                let tf::Value::String(key) = parse_event(event, events, depth + 1)? else {
-                    return None;
-                };
-                if key == "<<" || map.contains_key(&key) {
-                    return None;
-                }
-                map.insert(key, parse_node(events, depth + 1)?);
-            }
-            Some(tf::Value::Object(map))
+    }
+
+    fn parse(
+        &mut self,
+        event: Event,
+        marker: Marker,
+        depth: usize,
+        place: Place,
+    ) -> Option<tf::Value> {
+        if depth > MAX_DOCUMENT_DEPTH {
+            return None;
         }
-        _ => None,
+        match event {
+            Event::Scalar(text, style, 0, None) => {
+                if place == Place::Held && style != TScalarStyle::Plain && may_be_document(&text) {
+                    self.strings.push(YamlString {
+                        text: text.clone(),
+                        style,
+                        line: marker.line() - 1,
+                        column: marker.col(),
+                    });
+                }
+                parse_scalar(text, style)
+            }
+            Event::SequenceStart(0, None) => {
+                let (_, held) = self.places(marker, place);
+                let mut array = Vec::new();
+                loop {
+                    let (event, marker) = self.events.next()?;
+                    if event == Event::SequenceEnd {
+                        break;
+                    }
+                    array.push(self.parse(event, marker, depth + 1, held)?);
+                }
+                Some(tf::Value::Array(array))
+            }
+            Event::MappingStart(0, None) => {
+                let (keys, held) = self.places(marker, place);
+                let mut map = tf::ValueMap::new();
+                loop {
+                    let (event, marker) = self.events.next()?;
+                    if event == Event::MappingEnd {
+                        break;
+                    }
+                    let tf::Value::String(key) = self.parse(event, marker, depth + 1, keys)? else {
+                        return None;
+                    };
+                    if key == "<<" || map.contains_key(&key) {
+                        return None;
+                    }
+                    map.insert(key, self.node(depth + 1, held)?);
+                }
+                Some(tf::Value::Object(map))
+            }
+            _ => None,
+        }
     }
 }
 
