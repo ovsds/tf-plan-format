@@ -4,7 +4,10 @@
 
 ```diff
 @@ ✅ terraform_data.foo-bar @@
- Values not shown to fit the length limit
++ id: (known after apply)
++ input: "foo"
++ output: (known after apply)
++ triggers_replace: null
 ```
 
 </details>
@@ -13,7 +16,10 @@
 
 ```diff
 @@ ✅ terraform_data.foo-bar @@
- Values not shown to fit the length limit
++ id: (known after apply)
++ input: "foo"
++ output: (known after apply)
++ triggers_replace: null
 ```
 
 </details>
@@ -22,7 +28,9 @@
 
 ```diff
 @@ ♻️ null_resource.foo-bar @@
- Values not shown to fit the length limit
+! id: "8077357928023619263" -> (known after apply)
+  triggers:
+!   always_run: "2026-10-18T19:59:22Z" -> (known after apply)
 ```
 
 </details>
@@ -31,7 +39,9 @@
 
 ```diff
 @@ ♻️ null_resource.foo-bar @@
- Values not shown to fit the length limit
+! id: "4525788878524015586" -> (known after apply)
+  triggers:
+!   always_run: "2024-10-25T21:40:19Z" -> (known after apply)
 ```
 
 </details>
@@ -40,7 +50,10 @@
 
 ```diff
 @@ ❌ terraform_data.foo-bar @@
- Values not shown to fit the length limit
+- id: "7ab2f2ee-c808-082c-93c7-d2a00826c3e4"
+- input: "foo"
+- output: "foo"
+- triggers_replace: null
 ```
 
 </details>
@@ -49,7 +62,10 @@
 
 ```diff
 @@ ❌ terraform_data.foo-bar @@
- Values not shown to fit the length limit
+- id: "96202d3f-5e6b-8c7f-8e5a-7d1599601bd8"
+- input: "foo"
+- output: "foo"
+- triggers_replace: null
 ```
 
 </details>
@@ -58,7 +74,8 @@
 
 ```diff
 @@ 🔄 terraform_data.foo-bar @@
- Values not shown to fit the length limit
+! input: "foo" -> "bar"
+! output: "foo" -> (known after apply)
 @@ ✅🔄❌ Outputs @@
  Values not shown to fit the length limit
 ```
@@ -69,7 +86,8 @@
 
 ```diff
 @@ 🔄 terraform_data.foo-bar @@
- Values not shown to fit the length limit
+! input: "foo" -> "bar"
+! output: "foo" -> (known after apply)
 @@ ✅🔄❌ Outputs @@
  Values not shown to fit the length limit
 ```
@@ -80,7 +98,8 @@
 
 ```diff
 @@ 🔄 terraform_data.foo-bar @@
- Values not shown to fit the length limit
+! input: "foo" -> "bar"
+! output: "foo" -> (known after apply)
 ```
 
 </details>
@@ -89,7 +108,8 @@
 
 ```diff
 @@ 🔄 terraform_data.foo-bar @@
- Values not shown to fit the length limit
+! input: "foo" -> "bar"
+! output: "foo" -> (known after apply)
 ```
 
 </details>
@@ -98,7 +118,9 @@
 
 ```diff
 @@ ♻️ random_bytes.test @@
- Values not shown to fit the length limit
+! base64: sensitive -> sensitive (known after apply)
+! hex: sensitive -> sensitive (known after apply)
+! length: 4 -> 8
 ```
 
 </details>
@@ -107,7 +129,9 @@
 
 ```diff
 @@ ♻️ random_bytes.test @@
- Values not shown to fit the length limit
+! base64: sensitive -> sensitive (known after apply)
+! hex: sensitive -> sensitive (known after apply)
+! length: 4 -> 8
 ```
 
 </details>
@@ -136,7 +160,10 @@
 @@ 🔄 terraform_data.foo-bar @@
  Values not shown to fit the length limit
 @@ ✅ terraform_data.id @@
- Values not shown to fit the length limit
++ id: (known after apply)
++ input: null
++ output: null
++ triggers_replace: null
 ```
 
 </details>
@@ -147,7 +174,10 @@
 @@ 🔄 terraform_data.foo-bar @@
  Values not shown to fit the length limit
 @@ ✅ terraform_data.id @@
- Values not shown to fit the length limit
++ id: (known after apply)
++ input: null
++ output: null
++ triggers_replace: null
 ```
 
 </details>
@@ -156,7 +186,8 @@
 
 ```diff
 @@ 🔄 terraform_data.foo-bar @@
- Values not shown to fit the length limit
+! input: "foo" -> "bar"
+! output: "foo" -> (known after apply)
 ```
 
 </details>
@@ -171,12 +202,13 @@
 
 </details>
 <details>
-<summary>💤 No changes (3)</summary>
+<summary>💤 No changes (4)</summary>
 <blockquote>
 <div>💤 <b>no-op/opentofu.tfplan.json</b></div>
 <div>💤 <b>no-op/terraform.tfplan.json</b></div>
 <div>💤 <b>no-resources/opentofu.tfplan.json</b></div>
+<div>💤 <b>no-resources/terraform.tfplan.json</b></div>
 </blockquote>
 </details>
 
-_Output limited to 4000 bytes: the last plan, values of 19 changes and outputs of 2 plans not shown_
+_Output limited to 4800 bytes: values of 4 changes and outputs of 2 plans not shown_
