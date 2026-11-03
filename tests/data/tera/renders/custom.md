@@ -16,5 +16,7 @@ tests/data/plans/sensitive/opentofu.tfplan.json
 tests/data/plans/sensitive/terraform.tfplan.json
 tests/data/plans/update-array/opentofu.tfplan.json
 tests/data/plans/update-array/terraform.tfplan.json
+tests/data/plans/update-documents/opentofu.tfplan.json
+tests/data/plans/update-documents/terraform.tfplan.json
 tests/data/plans/update/opentofu.tfplan.json
 tests/data/plans/update/terraform.tfplan.json
