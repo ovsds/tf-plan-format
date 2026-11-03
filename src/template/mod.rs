@@ -463,21 +463,21 @@ mod tests {
             let data = tf::tests::get_test_data();
             let result = render_capped(&data, get_expected_default().len() - 1);
 
-            // Both update-array plans hold the largest values: the tie goes to the one rendered first
-            let collapsed = get_plan_section(&result, "update-array/opentofu.tfplan.json");
+            // Both update-documents plans hold the largest values: the tie goes to the one rendered first
+            let collapsed = get_plan_section(&result, "update-documents/opentofu.tfplan.json");
             assert!(collapsed.contains(&format!(
-                "```diff\n@@ 🔄 terraform_data.foo-bar @@\n{COLLAPSED}\n```\n\n</details>"
+                "```diff\n@@ 🔄 terraform_data.foo-bar @@\n{COLLAPSED}\n@@ ✅ terraform_data.id @@\n"
             )));
-            assert!(!collapsed.contains("names:"));
-            let kept = get_plan_section(&result, "update-array/terraform.tfplan.json");
+            assert!(!collapsed.contains("documents:"));
+            let kept = get_plan_section(&result, "update-documents/terraform.tfplan.json");
             assert!(!kept.contains(COLLAPSED));
             assert_eq!(1, result.matches(COLLAPSED).count());
             assert_eq!(
-                "_Output limited to 4742 bytes: values of 1 change not shown_",
+                "_Output limited to 7225 bytes: values of 1 change not shown_",
                 get_note(&result)
             );
             assert!(result.ends_with(
-                "</details>\n\n_Output limited to 4742 bytes: values of 1 change not shown_\n"
+                "</details>\n\n_Output limited to 7225 bytes: values of 1 change not shown_\n"
             ));
         }
 
@@ -516,7 +516,7 @@ mod tests {
             assert!(result.contains("<b>read/terraform.tfplan.json</b>"));
             assert!(!result.contains("<b>sensitive/opentofu.tfplan.json</b>"));
             assert_eq!(
-                "_Output limited to 2200 bytes: the last 10 plans, values of 6 changes and outputs of 2 plans not shown_",
+                "_Output limited to 2200 bytes: the last 12 plans, values of 6 changes and outputs of 2 plans not shown_",
                 get_note(&result)
             );
         }
@@ -647,7 +647,7 @@ mod tests {
 
             // Even the marker and the note exceed the cap, they are still the best output left
             assert_eq!(
-                "<!-- tf-plan-format -->\n_Output limited to 10 bytes: all 20 plans not shown_\n",
+                "<!-- tf-plan-format -->\n_Output limited to 10 bytes: all 22 plans not shown_\n",
                 result
             );
         }

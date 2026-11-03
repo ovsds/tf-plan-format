@@ -6,14 +6,15 @@
 @@ 🔄 helm_release.web @@
   name: "web"
   values:
-    - image:
-        repository: "nginx"
-!       tag: "old" -> "new"
-!     replicaCount: 1 -> 2
+    - | yaml
+-     replicaCount: 1
++     replicaCount: 2
+      image:
+        repository: nginx
+-       tag: old
++       tag: new
       service:
-        ports:
-          - 80
-          - 443
+        ports: [80, 443]
 @@ ✅ helm_release.worker @@
 + metadata:
 +   - labels:
@@ -23,22 +24,28 @@
 +       - 9090
 + name: "worker"
 + values:
-+   - empty: []
-+     extraArgs:
-+       - "--metrics"
-+       - "--verbose"
++   - | yaml
 +     replicaCount: 1
++     extraArgs:
++       - --metrics
++       - --verbose
++     empty: []
 @@ ❌ helm_release.legacy @@
 - name: "legacy"
 - values:
--   - ports:
--       - 80
+-   - | yaml
 -     replicaCount: 1
+-     ports: [80]
 @@ 🔄 Outputs @@
-  configuration:
-    annotations:
-      owner: "platform"
-!   replicas: 1 -> 2
+  configuration: | json
+    {
+-     "replicas": 1,
+      "annotations": {
+        "owner": "platform"
+-     }
++     },
++     "replicas": 2
+    }
   notes: |
     
     First line

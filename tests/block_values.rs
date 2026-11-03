@@ -19,19 +19,33 @@ fn diff(before: &str, after: &str, show: bool) -> String {
 
 #[test]
 fn structured_strings_create_and_delete_as_blocks() {
-    for document in [
-        r#"{"replicas":2,"service":{"ports":[80,443]}}"#,
-        "replicas: 2\nservice:\n  ports: [80, 443]\n",
+    for (document, lines) in [
+        (
+            r#"{"replicas":2,"service":{"ports":[80,443]}}"#,
+            &[
+                "value: | json",
+                "  {",
+                "    \"replicas\": 2,",
+                "    \"service\": {",
+                "      \"ports\": [",
+                "        80,",
+                "        443",
+                "      ]",
+                "    }",
+                "  }",
+            ][..],
+        ),
+        (
+            "replicas: 2\nservice:\n  ports: [80, 443]\n",
+            &[
+                "value: | yaml",
+                "  replicas: 2",
+                "  service:",
+                "    ports: [80, 443]",
+            ][..],
+        ),
     ] {
         let map = values(string(document));
-        let lines = [
-            "value:",
-            "  replicas: 2",
-            "  service:",
-            "    ports:",
-            "      - 80",
-            "      - 443",
-        ];
         for show in [false, true] {
             for (before, after, marker) in [(None, Some(&map), '+'), (Some(&map), None, '-')] {
                 let expected = lines
@@ -51,35 +65,54 @@ fn structured_strings_create_and_delete_as_blocks() {
 }
 
 #[test]
-fn document_updates_compare_structure() {
-    for (before, after) in [
-        (
-            r#"{"replicas":1,"enabled":true}"#,
-            "enabled: true\nreplicas: 2\n",
-        ),
-        (
+fn document_updates_diff_by_line() {
+    let before = r#"{"replicas":1,"enabled":true}"#;
+    let after = r#"{"replicas":2,"enabled":true}"#;
+    assert_eq!(
+        "  value: | json\n    {\n-     \"replicas\": 1,\n+     \"replicas\": 2,\n      \"enabled\": true\n    }",
+        diff(before, after, true)
+    );
+    assert_eq!(
+        "  value: | json\n    ...\n-     \"replicas\": 1,\n+     \"replicas\": 2,\n    ...",
+        diff(before, after, false)
+    );
+    assert_eq!(
+        "  value: | yaml\n-   replicas: 1\n+   replicas: 2\n    enabled: true",
+        diff(
             "replicas: 1\nenabled: true\n",
-            r#"{"enabled":true,"replicas":2}"#,
-        ),
-    ] {
-        assert_eq!(
-            "  value:\n    enabled: true\n!   replicas: 1 -> 2",
-            diff(before, after, true)
-        );
-        assert_eq!("  value:\n!   replicas: 1 -> 2", diff(before, after, false));
-    }
+            "replicas: 2\nenabled: true\n",
+            true
+        )
+    );
 }
 
 #[test]
-fn document_formatting_and_key_order_are_not_changes() {
-    let before = r#"{"a":1,"nested":{"b":2,"a":1}}"#;
-    let after = "nested:\n  a: 1\n  b: 2\na: 1\n";
-    assert_eq!("", diff(before, after, false));
-    let shown = diff(before, after, true);
-    assert!(!shown.contains('!'));
-    assert!(!shown.contains('+'));
-    assert!(!shown.contains('-'));
-    assert!(shown.contains("nested:\n      a: 1\n      b: 2"));
+fn json_whitespace_is_no_change_but_key_order_is() {
+    let before = r#"{"a":1,"b":2}"#;
+    assert_eq!("", diff(before, "{ \"a\": 1,\n  \"b\": 2 }", false));
+    assert_eq!(
+        "  value: | json\n    ...\n-     \"a\": 1,\n-     \"b\": 2\n+     \"b\": 2,\n+     \"a\": 1\n    ...",
+        diff(before, r#"{"b":2,"a":1}"#, false)
+    );
+}
+
+#[test]
+fn json_renders_its_tokens_as_written() {
+    let document = r#"{"a":[],"b":{},"c":"x,{y}:\"z\"","d":1.50e3,"e":[{}],"f":"😀"}"#;
+    assert_eq!(
+        r#"value: | json
+  {
+    "a": [],
+    "b": {},
+    "c": "x,{y}:\"z\"",
+    "d": 1.50e3,
+    "e": [
+      {}
+    ],
+    "f": "😀"
+  }"#,
+        render_values(None, Some(&values(string(document))), true)
+    );
 }
 
 #[test]
@@ -110,7 +143,6 @@ fn literal_text_preserves_blank_and_boundary_lines() {
 #[test]
 fn document_detection_rejects_lossy_or_ambiguous_input() {
     for document in [
-        "{\"a\":1,\"a\":2}",
         "a: 1\na: 2\n",
         "1: value\n",
         "? [a, b]\n: value\n",
@@ -120,7 +152,8 @@ fn document_detection_rejects_lossy_or_ambiguous_input() {
         "a: .nan\n",
         "a: .inf\n",
         "a: 18446744073709551616\n",
-        "{\"a\":18446744073709551616}",
+        "a: 0.10000000000000000001\n",
+        "a: 0x1F\n",
     ] {
         let rendered = render_values(None, Some(&values(string(document))), true);
         if document.contains('\n') {
@@ -148,6 +181,49 @@ fn document_detection_rejects_lossy_or_ambiguous_input() {
 }
 
 #[test]
+fn any_valid_json_object_or_array_is_a_document() {
+    for (document, line) in [
+        (r#"{"a":1,"a":2}"#, r#"    "a": 2"#),
+        (
+            r#"{"a":18446744073709551616}"#,
+            r#"    "a": 18446744073709551616"#,
+        ),
+        (
+            r#"{"a":3.14159265358979323846}"#,
+            r#"    "a": 3.14159265358979323846"#,
+        ),
+    ] {
+        let rendered = render_values(None, Some(&values(string(document))), true);
+        assert!(rendered.starts_with("value: | json\n"), "{rendered}");
+        assert!(rendered.contains(line), "{rendered}");
+    }
+}
+
+#[test]
+fn yaml_scalars_that_read_without_loss_are_documents() {
+    for document in [
+        "a: 1.5\nb: -2e3\nc: 'quoted'\nd: ~\ne: TRUE\n",
+        "- 0.0\n- 10.25\n",
+    ] {
+        let rendered = render_values(None, Some(&values(string(document))), true);
+        assert!(rendered.starts_with("value: | yaml\n"), "{rendered}");
+    }
+    let deep = format!("a: {}{}\n", "[".repeat(200), "]".repeat(200));
+    let rendered = render_values(None, Some(&values(string(&deep))), true);
+    assert!(rendered.starts_with("value: |\n"), "{rendered}");
+}
+
+#[test]
+fn single_line_yaml_stays_a_string() {
+    for text in ["Note: hi", "- x", "[a, b]"] {
+        assert_eq!(
+            format!("value: {}", serde_json::to_string(text).unwrap()),
+            render_values(None, Some(&values(string(text))), true)
+        );
+    }
+}
+
+#[test]
 fn scalar_roots_stay_strings() {
     for document in ["null", "true", "42", "3.14", "plain", "\"quoted\""] {
         assert_eq!(
@@ -160,14 +236,9 @@ fn scalar_roots_stay_strings() {
 #[test]
 fn document_string_leaves_are_not_recursively_interpreted() {
     let map = values(string(r#"{"embedded":"{\"a\":1}","yaml":"a: 1\nb: 2"}"#));
-    let rendered = render_values(None, Some(&map), true);
-    assert!(
-        rendered.contains("embedded: \"{\\\"a\\\":1}\""),
-        "{rendered}"
-    );
-    assert!(
-        rendered.contains("yaml: |\n    a: 1\n    b: 2"),
-        "{rendered}"
+    assert_eq!(
+        "value: | json\n  {\n    \"embedded\": \"{\\\"a\\\":1}\",\n    \"yaml\": \"a: 1\\nb: 2\"\n  }",
+        render_values(None, Some(&map), true)
     );
 }
 
@@ -205,37 +276,24 @@ fn arrays_expand_recursively_in_whole_value_changes() {
 }
 
 #[test]
-fn documents_preserve_absent_and_explicit_null_members_and_elements() {
-    for show in [false, true] {
-        assert_eq!(
-            "  value:\n+   item: null",
-            diff("{}", r#"{"item":null}"#, show)
-        );
-        assert_eq!(
-            "  value:\n-   item: null",
-            diff(r#"{"item":null}"#, "{}", show)
-        );
-        assert_eq!("  value:\n+   - null", diff("[]", "[null]", show));
-        assert_eq!("  value:\n-   - null", diff("[null]", "[]", show));
-    }
-}
-
-#[test]
-fn opaque_transitions_never_expand_previous_document() {
-    for opaque in [
-        Value::Sensitive,
-        Value::SensitiveChanged,
-        Value::SensitiveUnknown,
-        Value::Unknown,
+fn opaque_transitions_show_the_document_as_removed_or_added() {
+    for (opaque, inline) in [
+        (Value::Sensitive, "sensitive"),
+        (Value::SensitiveChanged, "sensitive (changed)"),
+        (Value::SensitiveUnknown, "sensitive (known after apply)"),
+        (Value::Unknown, "(known after apply)"),
     ] {
+        let document = values(string("replicas: 2\n"));
+        let marker = values(opaque);
         for show in [false, true] {
-            let document = values(string("secret: never-disclose\n"));
-            let marker = values(opaque.clone());
-            for (before, after) in [(&document, &marker), (&marker, &document)] {
-                let result = render_diff_values(Some(before), Some(after), show);
-                assert!(!result.contains('\n'), "{result}");
-                assert!(result.starts_with("! value: "), "{result}");
-            }
+            assert_eq!(
+                format!("- value: | yaml\n-   replicas: 2\n+ value: {inline}"),
+                render_diff_values(Some(&document), Some(&marker), show)
+            );
+            assert_eq!(
+                format!("- value: {inline}\n+ value: | yaml\n+   replicas: 2"),
+                render_diff_values(Some(&marker), Some(&document), show)
+            );
         }
     }
 }
@@ -269,13 +327,20 @@ fn plain_and_diff_renderers_share_identical_value_lines() {
 }
 
 #[test]
-fn document_and_text_type_changes_keep_both_original_strings() {
-    for (before, after) in [("a: 1\n", "plain\ntext"), ("plain\ntext", "a: 1\n")] {
-        let result = diff(before, after, true);
-        assert!(result.contains("-   "), "{result}");
-        assert!(result.contains("+   "), "{result}");
-        assert!(result.contains("a: 1"), "{result}");
-        assert!(result.contains("plain"), "{result}");
+fn format_changes_show_both_strings_as_written() {
+    for show in [false, true] {
+        assert_eq!(
+            "- value: | yaml\n-   a: 1\n+ value: |\n+   plain\n+   text",
+            diff("a: 1\n", "plain\ntext", show)
+        );
+        assert_eq!(
+            "- value: | json\n-   {\n-     \"a\": 1\n-   }\n+ value: | yaml\n+   a: 1",
+            diff(r#"{"a":1}"#, "a: 1\n", show)
+        );
+        assert_eq!(
+            "- value: \"plain\"\n+ value: | json\n+   [\n+     1\n+   ]",
+            diff("plain", "[1]", show)
+        );
     }
 }
 
@@ -291,49 +356,34 @@ fn native_nested_arrays_preserve_opaque_markers() {
 }
 
 #[test]
-fn formatting_only_document_changes_inside_native_arrays_are_unchanged() {
+fn whitespace_only_json_changes_inside_native_arrays_are_unchanged() {
     let before = values(Value::Array(vec![string(r#"{"a":1,"b":{"c":2}}"#)]));
-    let after = values(Value::Array(vec![string("b:\n  c: 2\na: 1\n")]));
+    let after = values(Value::Array(vec![string(
+        "{ \"a\": 1, \"b\": { \"c\": 2 } }",
+    )]));
     assert_eq!("", render_diff_values(Some(&before), Some(&after), false));
     assert_eq!("", render_values(Some(&before), Some(&after), false));
     let shown = render_diff_values(Some(&before), Some(&after), true);
     assert_ne!(shown, "");
     assert!(shown.lines().all(|line| line.starts_with("  ")), "{shown}");
-    assert!(shown.contains("a: 1"), "{shown}");
-    assert!(shown.contains("c: 2"), "{shown}");
+    assert!(shown.contains("\"a\": 1"), "{shown}");
+    assert!(shown.contains("\"c\": 2"), "{shown}");
 }
 
 #[test]
-fn document_keys_escape_empty_punctuation_and_physical_line_breaks() {
-    let before = r#"{"line\nbreak":1,"":1,"a: b":1,"simple-key":1}"#;
-    let after = r#"{"line\nbreak":2,"":2,"a: b":2,"simple-key":2}"#;
-    let created = values(string(before));
-    assert_eq!(
-        "+ value:\n+   \"\": 1\n+   \"a: b\": 1\n+   \"line\\nbreak\": 1\n+   simple-key: 1",
-        render_diff_values(None, Some(&created), true)
-    );
-    for show in [false, true] {
-        assert_eq!(
-            "  value:\n!   \"\": 1 -> 2\n!   \"a: b\": 1 -> 2\n!   \"line\\nbreak\": 1 -> 2\n!   simple-key: 1 -> 2",
-            diff(before, after, show)
-        );
-    }
-}
-
-#[test]
-fn native_array_alignment_preserves_documents_with_formatting_changes() {
+fn native_array_alignment_matches_documents_with_whitespace_changes() {
     let before = values(Value::Array(vec![string(r#"{"a":1}"#), string("end")]));
     let after = values(Value::Array(vec![
         string(r#"{"new":2}"#),
-        string("a: 1\n"),
+        string(r#"{ "a": 1 }"#),
         string("end"),
     ]));
     for (before, after, direction) in [(&before, &after, true), (&after, &before, false)] {
         for show in [false, true] {
             let expected = if show {
-                "  value:\n!   - new: 2\n    - a: 1\n    - \"end\""
+                "  value:\n!   - | json\n!     {\n!       \"new\": 2\n!     }\n    - | json\n      {\n        \"a\": 1\n      }\n    - \"end\""
             } else {
-                "  value:\n!   - new: 2\n    - ..."
+                "  value:\n!   - | json\n!     {\n!       \"new\": 2\n!     }\n    - ..."
             };
             assert_eq!(
                 expected,
@@ -345,41 +395,17 @@ fn native_array_alignment_preserves_documents_with_formatting_changes() {
 }
 
 #[test]
-fn json_unicode_surrogate_pairs_parse_without_yaml_escape_rules() {
-    let document = r#"{"emoji":"\ud83d\ude00","nested":[{"count":1.25}]}"#;
-    assert_eq!(
-        "value:\n  emoji: \"😀\"\n  nested:\n    - count: 1.25",
-        render_values(None, Some(&values(string(document))), true)
-    );
-    assert_eq!(
-        "",
-        diff(document, "emoji: 😀\nnested:\n  - count: 1.25\n", false)
-    );
-    for document in [
-        r#"{"emoji":"\ud83d\ude00","n":0.10000000000000000001}"#,
-        r#"{"emoji":"\ud83d\ude00","n":18446744073709551616}"#,
-        r#"{"emoji":"\ud83d\ude00","n":1,"n":2}"#,
-        r#"{"nested":{"n":0.10000000000000000001}}"#,
-    ] {
-        assert_eq!(
-            format!("value: {}", serde_json::to_string(document).unwrap()),
-            render_values(None, Some(&values(string(document))), true)
-        );
-    }
-}
-
-#[test]
 fn unchanged_native_arrays_expand_document_and_text_strings() {
     let array = values(Value::Array(vec![
         string(r#"{"a":1}"#),
         string("first\nlast"),
         Value::Object(ValueMap::from([(
             "nested".to_string(),
-            Value::Array(vec![string("replicas: 2")]),
+            Value::Array(vec![string("replicas: 2\n")]),
         )])),
     ]));
     assert_eq!(
-        "  value:\n    - a: 1\n    - |\n      first\n      last\n    - nested:\n        - replicas: 2",
+        "  value:\n    - | json\n      {\n        \"a\": 1\n      }\n    - |\n      first\n      last\n    - nested:\n        - | yaml\n          replicas: 2",
         render_diff_values(Some(&array), Some(&array), true)
     );
     assert_eq!("", render_diff_values(Some(&array), Some(&array), false));

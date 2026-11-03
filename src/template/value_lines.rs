@@ -1,6 +1,5 @@
 use super::{key_line, mark, render_plaintext, LineKind, ValueLine, INDENT_STR};
 use crate::tf;
-use serde::Deserializer;
 use std::collections::{BTreeMap, BTreeSet};
 use yaml_rust2::parser::{Event, Parser};
 use yaml_rust2::scanner::TScalarStyle;
@@ -8,46 +7,65 @@ use yaml_rust2::scanner::TScalarStyle;
 const MAX_DIFF_CELLS: usize = 4_000_000;
 const MAX_DOCUMENT_DEPTH: usize = 128;
 
+#[derive(Clone, Copy, Debug, PartialEq)]
+enum Format {
+    Text,
+    Json,
+    Yaml,
+}
+
+impl Format {
+    fn marker(self) -> &'static str {
+        match self {
+            Self::Text => "|",
+            Self::Json => "| json",
+            Self::Yaml => "| yaml",
+        }
+    }
+}
+
+/// A plan value as it renders: a JSON or YAML document string and a multi-line string become a block of lines in
+/// their format, so values compare by what they show.
 #[derive(Clone, Debug, PartialEq)]
 enum Value {
     Scalar(tf::Value),
-    String(String, bool),
-    Object(BTreeMap<String, Value>, bool),
+    String(String),
+    Block(Format, Vec<String>),
+    Object(BTreeMap<String, Value>),
     Array(Vec<Value>),
 }
 
 impl Value {
-    fn from_tf(value: &tf::Value, document: bool) -> Self {
+    fn from_tf(value: &tf::Value) -> Self {
         match value {
-            tf::Value::String(text) => Self::String(text.clone(), !document),
+            tf::Value::String(text) => Self::from_string(text),
             tf::Value::Object(map) => Self::Object(
                 map.iter()
-                    .map(|(key, value)| {
-                        let key = if document {
-                            document_key(key)
-                        } else {
-                            key.clone()
-                        };
-                        (key, Self::from_tf(value, document))
-                    })
-                    .collect(),
-                document,
-            ),
-            tf::Value::Array(array) => Self::Array(
-                array
-                    .iter()
-                    .map(|value| Self::from_tf(value, document))
+                    .map(|(key, value)| (key.clone(), Self::from_tf(value)))
                     .collect(),
             ),
+            tf::Value::Array(array) => Self::Array(array.iter().map(Self::from_tf).collect()),
             scalar => Self::Scalar(scalar.clone()),
+        }
+    }
+
+    fn from_string(text: &str) -> Self {
+        let lines = |text: &str| text.split('\n').map(str::to_owned).collect();
+        match document_format(text) {
+            Some(Format::Json) => Self::Block(Format::Json, pretty_json(text)),
+            // A YAML document's final line break ends its last line, unlike text, whose every line shows.
+            Some(format) => Self::Block(format, lines(text.strip_suffix('\n').unwrap_or(text))),
+            None if text.contains('\n') => Self::Block(Format::Text, lines(text)),
+            None => Self::String(text.to_owned()),
         }
     }
 
     fn inline(&self) -> String {
         match self {
             Self::Scalar(value) => render_plaintext(value),
-            Self::String(text, _) => serde_json::to_string(text).unwrap(),
-            Self::Object(map, _) => format!(
+            Self::String(text) => serde_json::to_string(text).unwrap(),
+            Self::Block(_, lines) => serde_json::to_string(&lines.join("\n")).unwrap(),
+            Self::Object(map) => format!(
                 "{{{}}}",
                 map.iter()
                     .map(|(key, value)| format!("{key}: {}", value.inline()))
@@ -65,29 +83,12 @@ impl Value {
         }
     }
 
-    fn document(&self) -> Option<Self> {
-        let Self::String(text, true) = self else {
-            return None;
-        };
-        let value = parse_document(text)?;
-        Some(Self::from_tf(&value, true))
-    }
-
-    fn structural_identity(&self) -> Self {
-        if let Some(document) = self.document() {
-            return document;
-        }
+    /// The lines a text diff compares: a single-line string diffs against a multi-line one.
+    fn text_lines(&self) -> Option<(Format, Vec<String>)> {
         match self {
-            Self::Array(array) => {
-                Self::Array(array.iter().map(Self::structural_identity).collect())
-            }
-            Self::Object(map, document) => Self::Object(
-                map.iter()
-                    .map(|(key, value)| (key.clone(), value.structural_identity()))
-                    .collect(),
-                *document,
-            ),
-            _ => self.clone(),
+            Self::String(text) => Some((Format::Text, vec![text.clone()])),
+            Self::Block(format, lines) => Some((*format, lines.clone())),
+            _ => None,
         }
     }
 
@@ -95,60 +96,71 @@ impl Value {
         matches!(self, Self::Scalar(tf::Value::Null))
     }
 
-    fn contains_block_string(&self) -> bool {
+    fn contains_block(&self) -> bool {
         match self {
-            Self::String(text, _) => text.contains('\n') || self.document().is_some(),
-            Self::Array(values) => values.iter().any(Self::contains_block_string),
-            Self::Object(values, _) => values.values().any(Self::contains_block_string),
-            Self::Scalar(_) => false,
+            Self::Block(..) => true,
+            Self::Array(values) => values.iter().any(Self::contains_block),
+            Self::Object(values) => values.values().any(Self::contains_block),
+            Self::Scalar(_) | Self::String(_) => false,
         }
     }
 }
 
-fn document_key(key: &str) -> String {
-    if !key.is_empty()
-        && key.chars().all(|character| {
-            character.is_ascii_alphanumeric() || matches!(character, '_' | '-' | '.' | '/')
-        })
-    {
-        key.to_owned()
-    } else {
-        serde_json::to_string(key).unwrap()
+/// Pretty-prints valid JSON with 2-space indentation, keeping its keys' order and its tokens as written.
+fn pretty_json(text: &str) -> Vec<String> {
+    let indent = |depth: usize| " ".repeat(2 * depth);
+    let mut lines = Vec::new();
+    let mut line = String::new();
+    let mut depth = 0;
+    let mut characters = text.chars().peekable();
+    while let Some(character) = characters.next() {
+        match character {
+            '"' => {
+                line.push(character);
+                while let Some(character) = characters.next() {
+                    line.push(character);
+                    match character {
+                        '\\' => line.extend(characters.next()),
+                        '"' => break,
+                        _ => {}
+                    }
+                }
+            }
+            '{' | '[' => {
+                line.push(character);
+                while characters.next_if(char::is_ascii_whitespace).is_some() {}
+                if let Some(close) = characters.next_if(|c| matches!(c, '}' | ']')) {
+                    line.push(close);
+                } else {
+                    depth += 1;
+                    lines.push(std::mem::replace(&mut line, indent(depth)));
+                }
+            }
+            '}' | ']' => {
+                depth -= 1;
+                lines.push(std::mem::replace(&mut line, indent(depth)));
+                line.push(character);
+            }
+            ',' => {
+                line.push(character);
+                lines.push(std::mem::replace(&mut line, indent(depth)));
+            }
+            ':' => line.push_str(": "),
+            character if character.is_ascii_whitespace() => {}
+            character => line.push(character),
+        }
     }
+    lines.push(line);
+    lines
 }
 
-fn equivalent(before: &Value, after: &Value) -> bool {
-    if before == after {
-        return true;
-    }
-    match (before, after) {
-        (Value::String(..), Value::String(..)) => match (before.document(), after.document()) {
-            (Some(before), Some(after)) => before == after,
-            _ => false,
-        },
-        (Value::Array(before), Value::Array(after)) => {
-            before.len() == after.len()
-                && before
-                    .iter()
-                    .zip(after)
-                    .all(|(before, after)| equivalent(before, after))
-        }
-        (Value::Object(before, _), Value::Object(after, _)) => {
-            before.len() == after.len()
-                && before.iter().all(|(key, before)| {
-                    after
-                        .get(key)
-                        .is_some_and(|after| equivalent(before, after))
-                })
-        }
-        _ => false,
-    }
-}
-
-fn parse_document(text: &str) -> Option<tf::Value> {
+/// The format of a string holding a JSON object or array, or a multi-line YAML one that reads without loss.
+fn document_format(text: &str) -> Option<Format> {
     if let Ok(raw) = serde_json::from_str::<Box<serde_json::value::RawValue>>(text) {
-        let value = parse_json(raw.get(), 0).ok()?;
-        return matches!(value, tf::Value::Object(_) | tf::Value::Array(_)).then_some(value);
+        return raw.get().starts_with(['{', '[']).then_some(Format::Json);
+    }
+    if !text.contains('\n') {
+        return None;
     }
     // The event stream retains duplicate keys and tags that a loaded YAML map can discard.
     let mut parser = Parser::new_from_str(text);
@@ -169,7 +181,7 @@ fn parse_document(text: &str) -> Option<tf::Value> {
     if events.next()? != Event::DocumentEnd || events.next()? != Event::StreamEnd {
         return None;
     }
-    matches!(value, tf::Value::Object(_) | tf::Value::Array(_)).then_some(value)
+    matches!(value, tf::Value::Object(_) | tf::Value::Array(_)).then_some(Format::Yaml)
 }
 
 fn parse_node(events: &mut impl Iterator<Item = Event>, depth: usize) -> Option<tf::Value> {
@@ -285,31 +297,34 @@ fn line(text: String, kind: LineKind) -> ValueLine {
     ValueLine { text, kind }
 }
 
-fn named(key: &str, value: &Value, indent: usize, parse: bool) -> Vec<ValueLine> {
-    if parse {
-        if let Some(document) = value.document() {
-            return named(key, &document, indent, false);
-        }
-    }
+fn header(key: &str, format: Format, indent: usize) -> ValueLine {
+    ValueLine::unchanged(format!(
+        "{}{key}: {}",
+        INDENT_STR.repeat(indent),
+        format.marker()
+    ))
+}
+
+fn named(key: &str, value: &Value, indent: usize) -> Vec<ValueLine> {
     let prefix = format!("{}{key}:", INDENT_STR.repeat(indent));
     match value {
-        Value::Object(map, _) if !map.is_empty() => {
+        Value::Object(map) if !map.is_empty() => {
             let mut result = vec![key_line(key, indent)];
             for (key, value) in map {
-                result.extend(named(key, value, indent + 1, parse));
+                result.extend(named(key, value, indent + 1));
             }
             result
         }
         Value::Array(array) if !array.is_empty() => {
             let mut result = vec![key_line(key, indent)];
             for value in array {
-                result.extend(item(named("", value, indent + 2, parse), indent + 1));
+                result.extend(item(named("", value, indent + 2), indent + 1));
             }
             result
         }
-        Value::String(text, _) if text.contains('\n') => {
-            let mut result = vec![ValueLine::unchanged(format!("{prefix} |"))];
-            result.extend(text.split('\n').map(|text| {
+        Value::Block(format, lines) => {
+            let mut result = vec![header(key, *format, indent)];
+            result.extend(lines.iter().map(|text| {
                 ValueLine::unchanged(format!("{}{text}", INDENT_STR.repeat(indent + 1)))
             }));
             result
@@ -345,10 +360,37 @@ fn item(mut lines: Vec<ValueLine>, indent: usize) -> Vec<ValueLine> {
     lines
 }
 
+/// A value replaced by one of another kind, such as an object or a document string by `(known after apply)`, when
+/// either spans several lines: the old lines marked removed, then the new ones marked added.
+fn replaced(
+    key: &str,
+    before: &Value,
+    after: &Value,
+    indent: usize,
+) -> Option<(Vec<ValueLine>, Vec<ValueLine>)> {
+    let same_kind = match (before, after) {
+        (Value::Object(_), Value::Object(_)) | (Value::Array(_), Value::Array(_)) => true,
+        _ => matches!(
+            (before.text_lines(), after.text_lines()),
+            (Some((before, _)), Some((after, _))) if before == after
+        ),
+    };
+    if before.is_null() || after.is_null() || same_kind {
+        return None;
+    }
+    let removed = named(key, before, indent);
+    let added = named(key, after, indent);
+    (removed.len() > 1 || added.len() > 1).then(|| {
+        (
+            mark(removed, LineKind::Removed),
+            mark(added, LineKind::Added),
+        )
+    })
+}
+
 fn object(
     before: &BTreeMap<String, Value>,
     after: &BTreeMap<String, Value>,
-    document: bool,
     indent: usize,
     show: bool,
 ) -> Vec<ValueLine> {
@@ -356,120 +398,72 @@ fn object(
     let null = Value::Scalar(tf::Value::Null);
     let mut result = Vec::new();
     for key in keys {
-        let before = before.get(key);
-        let after = after.get(key);
         result.extend(changed(
             key,
-            if document {
-                before
-            } else {
-                Some(before.unwrap_or(&null))
-            },
-            if document {
-                after
-            } else {
-                Some(after.unwrap_or(&null))
-            },
+            before.get(key).unwrap_or(&null),
+            after.get(key).unwrap_or(&null),
             indent,
             show,
-            !document,
         ));
     }
     result
 }
 
-fn changed(
-    key: &str,
-    before: Option<&Value>,
-    after: Option<&Value>,
-    indent: usize,
-    show: bool,
-    parse: bool,
-) -> Vec<ValueLine> {
-    let before_document = before.and_then(Value::document);
-    let after_document = after.and_then(Value::document);
-    let before_present = before.is_some_and(|value| !value.is_null());
-    let after_present = after.is_some_and(|value| !value.is_null());
-    if parse
-        && (!before_present || before_document.is_some())
-        && (!after_present || after_document.is_some())
-        && (before_document.is_some() || after_document.is_some())
-    {
-        let lines = changed(
-            key,
-            before_document.as_ref(),
-            after_document.as_ref(),
-            indent,
-            show,
-            false,
-        );
-        return if before_present && after_present {
-            lines
-        } else {
-            mark(lines, LineKind::Changed)
-        };
-    }
-    if before
-        .zip(after)
-        .is_some_and(|(before, after)| equivalent(before, after))
-    {
-        return if show {
-            before.map_or_else(Vec::new, |value| {
-                if parse
-                    && before == after
-                    && matches!(value, Value::Array(_))
-                    && !value.contains_block_string()
-                {
-                    vec![ValueLine::unchanged(format!(
-                        "{}{key}: {}",
-                        INDENT_STR.repeat(indent),
-                        value.inline()
-                    ))]
-                } else {
-                    named(key, value, indent, parse)
-                }
-            })
-        } else {
+fn changed(key: &str, before: &Value, after: &Value, indent: usize, show: bool) -> Vec<ValueLine> {
+    if before == after {
+        return if !show {
             Vec::new()
+        } else if matches!(before, Value::Array(_)) && !before.contains_block() {
+            vec![ValueLine::unchanged(format!(
+                "{}{key}: {}",
+                INDENT_STR.repeat(indent),
+                before.inline()
+            ))]
+        } else {
+            named(key, before, indent)
         };
     }
     match (before, after) {
-        (Some(Value::Object(before, document)), Some(Value::Object(after, _))) => {
+        (Value::Object(before), Value::Object(after)) => {
             let mut result = vec![key_line(key, indent)];
-            result.extend(object(before, after, *document, indent + 1, show));
+            result.extend(object(before, after, indent + 1, show));
             result
         }
-        (Some(Value::Array(before)), Some(Value::Array(after))) => {
+        (Value::Array(before), Value::Array(after)) => {
             let mut result = vec![key_line(key, indent)];
-            result.extend(array(before, after, indent + 1, show, parse));
+            result.extend(array(before, after, indent + 1, show));
             result
         }
-        (Some(Value::String(before, _)), Some(Value::String(after, _)))
-            if before.contains('\n') || after.contains('\n') =>
-        {
-            text(key, before, after, indent, show)
-        }
-        (Some(value), None) if !parse => mark(named(key, value, indent, false), LineKind::Removed),
-        (None, Some(value)) if !parse => mark(named(key, value, indent, false), LineKind::Added),
         _ => {
-            let expanded = match (before, after) {
-                (Some(value), None) | (None, Some(value)) => Some(value),
-                (Some(before), Some(after)) if before.is_null() => Some(after),
-                (Some(before), Some(after)) if after.is_null() => Some(before),
-                _ => None,
-            };
-            if let Some(value) = expanded {
-                if matches!(value, Value::Object(..) | Value::Array(..))
-                    || matches!(value, Value::String(text, _) if text.contains('\n'))
+            if let (Some((format, before_lines)), Some((after_format, after_lines))) =
+                (before.text_lines(), after.text_lines())
+            {
+                if format == after_format
+                    && (matches!(before, Value::Block(..)) || matches!(after, Value::Block(..)))
                 {
-                    return mark(named(key, value, indent, parse), LineKind::Changed);
+                    return text(key, format, &before_lines, &after_lines, indent, show);
                 }
+            }
+            let expanded = if before.is_null() {
+                Some(after)
+            } else if after.is_null() {
+                Some(before)
+            } else {
+                None
+            };
+            if let Some(value) = expanded.filter(|value| {
+                matches!(value, Value::Object(_) | Value::Array(_) | Value::Block(..))
+            }) {
+                return mark(named(key, value, indent), LineKind::Changed);
+            }
+            if let Some((removed, added)) = replaced(key, before, after, indent) {
+                return removed.into_iter().chain(added).collect();
             }
             vec![ValueLine::changed(format!(
                 "{}{key}: {} -> {}",
                 INDENT_STR.repeat(indent),
-                before.map_or_else(|| "(absent)".to_string(), Value::inline),
-                after.map_or_else(|| "(absent)".to_string(), Value::inline)
+                before.inline(),
+                after.inline()
             ))]
         }
     }
@@ -547,32 +541,22 @@ fn alignment<T>(
     result
 }
 
-fn array(
-    before: &[Value],
-    after: &[Value],
-    indent: usize,
-    show: bool,
-    parse: bool,
-) -> Vec<ValueLine> {
+fn array(before: &[Value], after: &[Value], indent: usize, show: bool) -> Vec<ValueLine> {
     let mut result = Vec::new();
     let mut removed = Vec::new();
     let mut added = Vec::new();
     let null = Value::Scalar(tf::Value::Null);
     let flush = |result: &mut Vec<ValueLine>, removed: &mut Vec<usize>, added: &mut Vec<usize>| {
         for i in 0..removed.len().max(added.len()) {
-            let before_value = removed.get(i).map(|i| &before[*i]);
-            let after_value = added.get(i).map(|i| &after[*i]);
-            let before = before_value.unwrap_or(&null);
-            let after = after_value.unwrap_or(&null);
-            let lines = changed(
-                "",
-                if parse { Some(before) } else { before_value },
-                if parse { Some(after) } else { after_value },
-                indent + 1,
-                show,
-                parse,
-            );
-            if lines.is_empty() && equivalent(before, after) {
+            let before = removed.get(i).map_or(&null, |i| &before[*i]);
+            let after = added.get(i).map_or(&null, |i| &after[*i]);
+            if let Some((old_lines, new_lines)) = replaced("", before, after, indent + 1) {
+                result.extend(item(old_lines, indent));
+                result.extend(item(new_lines, indent));
+                continue;
+            }
+            let lines = changed("", before, after, indent + 1, show);
+            if lines.is_empty() && before == after {
                 continue;
             }
             if lines.is_empty() || (lines.len() == 1 && lines[0].text.trim() == ":") {
@@ -593,14 +577,12 @@ fn array(
         added.clear();
     };
     let mut hidden = false;
-    let before_identity: Vec<_> = before.iter().map(Value::structural_identity).collect();
-    let after_identity: Vec<_> = after.iter().map(Value::structural_identity).collect();
-    for (left, right) in alignment(&before_identity, &after_identity, PartialEq::eq) {
+    for (left, right) in alignment(before, after, PartialEq::eq) {
         match (left, right) {
             (Some(i), Some(_)) => {
                 flush(&mut result, &mut removed, &mut added);
                 if show {
-                    result.extend(item(named("", &before[i], indent + 1, parse), indent));
+                    result.extend(item(named("", &before[i], indent + 1), indent));
                 } else if !hidden {
                     result.push(ValueLine::unchanged(format!(
                         "{}- ...",
@@ -624,17 +606,19 @@ fn array(
     result
 }
 
-fn text(key: &str, before: &str, after: &str, indent: usize, show: bool) -> Vec<ValueLine> {
-    let mut result = vec![ValueLine::unchanged(format!(
-        "{}{key}: |",
-        INDENT_STR.repeat(indent)
-    ))];
-    let before: Vec<_> = before.split('\n').collect();
-    let after: Vec<_> = after.split('\n').collect();
+fn text(
+    key: &str,
+    format: Format,
+    before: &[String],
+    after: &[String],
+    indent: usize,
+    show: bool,
+) -> Vec<ValueLine> {
+    let mut result = vec![header(key, format, indent)];
     let mut hidden = false;
-    for (left, right) in alignment(&before, &after, PartialEq::eq) {
+    for (left, right) in alignment(before, after, PartialEq::eq) {
         let (text, kind) = match (left, right) {
-            (Some(i), Some(_)) if show => (before[i], LineKind::Same),
+            (Some(i), Some(_)) if show => (before[i].as_str(), LineKind::Same),
             (Some(_), Some(_)) if hidden => continue,
             (Some(_), Some(_)) => {
                 hidden = true;
@@ -642,11 +626,11 @@ fn text(key: &str, before: &str, after: &str, indent: usize, show: bool) -> Vec<
             }
             (Some(i), None) => {
                 hidden = false;
-                (before[i], LineKind::Removed)
+                (before[i].as_str(), LineKind::Removed)
             }
             (None, Some(j)) => {
                 hidden = false;
-                (after[j], LineKind::Added)
+                (after[j].as_str(), LineKind::Added)
             }
             (None, None) => unreachable!(),
         };
@@ -665,78 +649,25 @@ pub(super) fn render_value_lines(
 ) -> Vec<ValueLine> {
     let convert = |map: &tf::ValueMap| {
         map.iter()
-            .map(|(key, value)| (key.clone(), Value::from_tf(value, false)))
+            .map(|(key, value)| (key.clone(), Value::from_tf(value)))
             .collect::<BTreeMap<_, _>>()
     };
     match (before.map(convert), after.map(convert)) {
-        (Some(before), Some(after)) => object(&before, &after, false, 0, show),
+        (Some(before), Some(after)) => object(&before, &after, 0, show),
         (Some(before), None) => mark(
             before
                 .iter()
-                .flat_map(|(key, value)| named(key, value, 0, true))
+                .flat_map(|(key, value)| named(key, value, 0))
                 .collect(),
             LineKind::Removed,
         ),
         (None, Some(after)) => mark(
             after
                 .iter()
-                .flat_map(|(key, value)| named(key, value, 0, true))
+                .flat_map(|(key, value)| named(key, value, 0))
                 .collect(),
             LineKind::Added,
         ),
         (None, None) => Vec::new(),
-    }
-}
-
-fn parse_json(text: &str, depth: usize) -> Result<tf::Value, serde_json::Error> {
-    struct Visitor {
-        depth: usize,
-    }
-    impl<'de> serde::de::Visitor<'de> for Visitor {
-        type Value = tf::Value;
-
-        fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-            formatter.write_str("a supported document value")
-        }
-
-        fn visit_seq<A: serde::de::SeqAccess<'de>>(
-            self,
-            mut sequence: A,
-        ) -> Result<Self::Value, A::Error> {
-            let mut values = Vec::new();
-            while let Some(raw) = sequence.next_element::<Box<serde_json::value::RawValue>>()? {
-                values
-                    .push(parse_json(raw.get(), self.depth + 1).map_err(serde::de::Error::custom)?);
-            }
-            Ok(tf::Value::Array(values))
-        }
-
-        fn visit_map<A: serde::de::MapAccess<'de>>(
-            self,
-            mut map: A,
-        ) -> Result<Self::Value, A::Error> {
-            let mut values = tf::ValueMap::new();
-            while let Some(key) = map.next_key::<String>()? {
-                if values.contains_key(&key) {
-                    return Err(serde::de::Error::custom("duplicate key"));
-                }
-                let raw = map.next_value::<Box<serde_json::value::RawValue>>()?;
-                let value =
-                    parse_json(raw.get(), self.depth + 1).map_err(serde::de::Error::custom)?;
-                values.insert(key, value);
-            }
-            Ok(tf::Value::Object(values))
-        }
-    }
-    if depth > MAX_DOCUMENT_DEPTH {
-        return Err(serde::de::Error::custom("document too deep"));
-    }
-    let mut deserializer = serde_json::Deserializer::from_str(text);
-    match text.as_bytes()[0] {
-        b'{' => deserializer.deserialize_map(Visitor { depth }),
-        b'[' => deserializer.deserialize_seq(Visitor { depth }),
-        b'"' => serde_json::from_str(text).map(tf::Value::String),
-        _ => parse_scalar(text.to_owned(), TScalarStyle::Plain)
-            .ok_or_else(|| serde::de::Error::custom("unsupported number")),
     }
 }

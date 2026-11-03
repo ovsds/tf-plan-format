@@ -92,7 +92,7 @@ fn max_length() -> Result<(), Box<dyn std::error::Error>> {
 
     let mut cmd = Command::cargo_bin("tf_plan_format")?;
     cmd.arg("github");
-    cmd.arg("--max-length").arg("4000");
+    cmd.arg("--max-length").arg("4800");
 
     for file in utils::get_plan_files() {
         cmd.arg("--file").arg(file);

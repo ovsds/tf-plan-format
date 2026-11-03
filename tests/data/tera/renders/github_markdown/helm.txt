@@ -5,9 +5,13 @@
 ```diff
 @@ 🔄 helm_release.web @@
   values:
-    - image:
-!       tag: "old" -> "new"
-!     replicaCount: 1 -> 2
+    - | yaml
+-     replicaCount: 1
++     replicaCount: 2
+      ...
+-       tag: old
++       tag: new
+      ...
 @@ ✅ helm_release.worker @@
 + metadata:
 +   - labels:
@@ -17,20 +21,27 @@
 +       - 9090
 + name: "worker"
 + values:
-+   - empty: []
-+     extraArgs:
-+       - "--metrics"
-+       - "--verbose"
++   - | yaml
 +     replicaCount: 1
++     extraArgs:
++       - --metrics
++       - --verbose
++     empty: []
 @@ ❌ helm_release.legacy @@
 - name: "legacy"
 - values:
--   - ports:
--       - 80
+-   - | yaml
 -     replicaCount: 1
+-     ports: [80]
 @@ 🔄 Outputs @@
-  configuration:
-!   replicas: 1 -> 2
+  configuration: | json
+    ...
+-     "replicas": 1,
+    ...
+-     }
++     },
++     "replicas": 2
+    ...
   notes: |
     ...
 -   Old message

@@ -1,0 +1,210 @@
+{
+  "format_version": "1.2",
+  "terraform_version": "1.7.5",
+  "planned_values": {
+    "root_module": {
+      "resources": [
+        {
+          "address": "terraform_data.foo-bar",
+          "mode": "managed",
+          "type": "terraform_data",
+          "name": "foo-bar",
+          "provider_name": "terraform.io/builtin/terraform",
+          "schema_version": 0,
+          "values": {
+            "id": "e1c31aaa-d241-9bbf-d3d7-50a9b095e7d2",
+            "input": {
+              "documents": ["{\"enabled\":true,\"name\":\"a\"}", "name: b\nenabled: true\n"],
+              "json": "{\"replicas\":2,\"service\":{\"ports\":[80,443]}}",
+              "yaml": "\"enabled\": true\n\"replicas\": 2\n"
+            },
+            "triggers_replace": null
+          },
+          "sensitive_values": {
+            "input": {
+              "documents": [false, false]
+            },
+            "output": {}
+          }
+        },
+        {
+          "address": "terraform_data.id",
+          "mode": "managed",
+          "type": "terraform_data",
+          "name": "id",
+          "provider_name": "terraform.io/builtin/terraform",
+          "schema_version": 0,
+          "values": {
+            "input": null,
+            "output": null,
+            "triggers_replace": null
+          },
+          "sensitive_values": {}
+        }
+      ]
+    }
+  },
+  "resource_changes": [
+    {
+      "address": "terraform_data.foo-bar",
+      "mode": "managed",
+      "type": "terraform_data",
+      "name": "foo-bar",
+      "provider_name": "terraform.io/builtin/terraform",
+      "change": {
+        "actions": ["update"],
+        "before": {
+          "id": "e1c31aaa-d241-9bbf-d3d7-50a9b095e7d2",
+          "input": {
+            "documents": ["{\"enabled\":false,\"name\":\"a\"}", "name: b\nenabled: false\n"],
+            "json": "{\"replicas\":1,\"service\":{\"ports\":[80]}}",
+            "unknown": "{\"id\":\"a\"}",
+            "yaml": "\"enabled\": true\n\"replicas\": 1\n"
+          },
+          "output": {
+            "documents": ["{\"enabled\":false,\"name\":\"a\"}", "name: b\nenabled: false\n"],
+            "json": "{\"replicas\":1,\"service\":{\"ports\":[80]}}",
+            "unknown": "{\"id\":\"a\"}",
+            "yaml": "\"enabled\": true\n\"replicas\": 1\n"
+          },
+          "triggers_replace": null
+        },
+        "after": {
+          "id": "e1c31aaa-d241-9bbf-d3d7-50a9b095e7d2",
+          "input": {
+            "documents": ["{\"enabled\":true,\"name\":\"a\"}", "name: b\nenabled: true\n"],
+            "json": "{\"replicas\":2,\"service\":{\"ports\":[80,443]}}",
+            "yaml": "\"enabled\": true\n\"replicas\": 2\n"
+          },
+          "triggers_replace": null
+        },
+        "after_unknown": {
+          "input": {
+            "documents": [false, false],
+            "unknown": true
+          },
+          "output": true
+        },
+        "before_sensitive": {
+          "input": {
+            "documents": [false, false]
+          },
+          "output": {
+            "documents": [false, false]
+          }
+        },
+        "after_sensitive": {
+          "input": {
+            "documents": [false, false]
+          },
+          "output": {}
+        }
+      }
+    },
+    {
+      "address": "terraform_data.id",
+      "mode": "managed",
+      "type": "terraform_data",
+      "name": "id",
+      "provider_name": "terraform.io/builtin/terraform",
+      "change": {
+        "actions": ["create"],
+        "before": null,
+        "after": {
+          "input": null,
+          "output": null,
+          "triggers_replace": null
+        },
+        "after_unknown": {
+          "id": true
+        },
+        "before_sensitive": false,
+        "after_sensitive": {}
+      }
+    }
+  ],
+  "prior_state": {
+    "format_version": "1.0",
+    "terraform_version": "1.7.5",
+    "values": {
+      "root_module": {
+        "resources": [
+          {
+            "address": "terraform_data.foo-bar",
+            "mode": "managed",
+            "type": "terraform_data",
+            "name": "foo-bar",
+            "provider_name": "terraform.io/builtin/terraform",
+            "schema_version": 0,
+            "values": {
+              "id": "e1c31aaa-d241-9bbf-d3d7-50a9b095e7d2",
+              "input": {
+                "documents": ["{\"enabled\":false,\"name\":\"a\"}", "name: b\nenabled: false\n"],
+                "json": "{\"replicas\":1,\"service\":{\"ports\":[80]}}",
+                "unknown": "{\"id\":\"a\"}",
+                "yaml": "\"enabled\": true\n\"replicas\": 1\n"
+              },
+              "output": {
+                "documents": ["{\"enabled\":false,\"name\":\"a\"}", "name: b\nenabled: false\n"],
+                "json": "{\"replicas\":1,\"service\":{\"ports\":[80]}}",
+                "unknown": "{\"id\":\"a\"}",
+                "yaml": "\"enabled\": true\n\"replicas\": 1\n"
+              },
+              "triggers_replace": null
+            },
+            "sensitive_values": {
+              "input": {
+                "documents": [false, false]
+              },
+              "output": {
+                "documents": [false, false]
+              }
+            },
+            "depends_on": ["terraform_data.id"]
+          }
+        ]
+      }
+    }
+  },
+  "configuration": {
+    "provider_config": {
+      "terraform": {
+        "name": "terraform",
+        "full_name": "terraform.io/builtin/terraform"
+      }
+    },
+    "root_module": {
+      "resources": [
+        {
+          "address": "terraform_data.foo-bar",
+          "mode": "managed",
+          "type": "terraform_data",
+          "name": "foo-bar",
+          "provider_config_key": "terraform",
+          "expressions": {
+            "input": {
+              "references": ["terraform_data.id.id", "terraform_data.id"]
+            }
+          },
+          "schema_version": 0
+        },
+        {
+          "address": "terraform_data.id",
+          "mode": "managed",
+          "type": "terraform_data",
+          "name": "id",
+          "provider_config_key": "terraform",
+          "schema_version": 0
+        }
+      ]
+    }
+  },
+  "relevant_attributes": [
+    {
+      "resource": "terraform_data.id",
+      "attribute": ["id"]
+    }
+  ],
+  "timestamp": "2026-11-03T09:31:57Z",
+  "errored": false
+}

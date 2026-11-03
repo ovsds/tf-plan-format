@@ -28,7 +28,9 @@
 
 ```diff
 @@ ♻️ null_resource.foo-bar @@
- Values not shown to fit the length limit
+! id: "8077357928023619263" -> (known after apply)
+  triggers:
+!   always_run: "2026-10-18T19:59:22Z" -> (known after apply)
 ```
 
 </details>
@@ -37,7 +39,9 @@
 
 ```diff
 @@ ♻️ null_resource.foo-bar @@
- Values not shown to fit the length limit
+! id: "4525788878524015586" -> (known after apply)
+  triggers:
+!   always_run: "2024-10-25T21:40:19Z" -> (known after apply)
 ```
 
 </details>
@@ -150,6 +154,34 @@
 
 </details>
 <details>
+<summary>✅🔄 <b>update-documents/opentofu.tfplan.json</b> +1 ~1 −0</summary>
+
+```diff
+@@ 🔄 terraform_data.foo-bar @@
+ Values not shown to fit the length limit
+@@ ✅ terraform_data.id @@
++ id: (known after apply)
++ input: null
++ output: null
++ triggers_replace: null
+```
+
+</details>
+<details>
+<summary>✅🔄 <b>update-documents/terraform.tfplan.json</b> +1 ~1 −0</summary>
+
+```diff
+@@ 🔄 terraform_data.foo-bar @@
+ Values not shown to fit the length limit
+@@ ✅ terraform_data.id @@
++ id: (known after apply)
++ input: null
++ output: null
++ triggers_replace: null
+```
+
+</details>
+<details>
 <summary>🔄 <b>update/opentofu.tfplan.json</b> +0 ~1 −0</summary>
 
 ```diff
@@ -179,4 +211,4 @@
 </blockquote>
 </details>
 
-_Output limited to 4000 bytes: values of 4 changes and outputs of 2 plans not shown_
+_Output limited to 4800 bytes: values of 4 changes and outputs of 2 plans not shown_
