@@ -12,7 +12,7 @@
           "provider_name": "terraform.io/builtin/terraform",
           "schema_version": 0,
           "values": {
-            "id": "831d3664-a633-17f6-95a7-6bc28a6a0af2",
+            "id": "e1c31aaa-d241-9bbf-d3d7-50a9b095e7d2",
             "input": {
               "documents": ["{\"enabled\":true,\"name\":\"a\"}", "name: b\nenabled: true\n"],
               "json": "{\"replicas\":2,\"service\":{\"ports\":[80,443]}}",
@@ -26,6 +26,20 @@
             },
             "output": {}
           }
+        },
+        {
+          "address": "terraform_data.id",
+          "mode": "managed",
+          "type": "terraform_data",
+          "name": "id",
+          "provider_name": "terraform.io/builtin/terraform",
+          "schema_version": 0,
+          "values": {
+            "input": null,
+            "output": null,
+            "triggers_replace": null
+          },
+          "sensitive_values": {}
         }
       ]
     }
@@ -40,21 +54,23 @@
       "change": {
         "actions": ["update"],
         "before": {
-          "id": "831d3664-a633-17f6-95a7-6bc28a6a0af2",
+          "id": "e1c31aaa-d241-9bbf-d3d7-50a9b095e7d2",
           "input": {
             "documents": ["{\"enabled\":false,\"name\":\"a\"}", "name: b\nenabled: false\n"],
             "json": "{\"replicas\":1,\"service\":{\"ports\":[80]}}",
+            "unknown": "{\"id\":\"a\"}",
             "yaml": "\"enabled\": true\n\"replicas\": 1\n"
           },
           "output": {
             "documents": ["{\"enabled\":false,\"name\":\"a\"}", "name: b\nenabled: false\n"],
             "json": "{\"replicas\":1,\"service\":{\"ports\":[80]}}",
+            "unknown": "{\"id\":\"a\"}",
             "yaml": "\"enabled\": true\n\"replicas\": 1\n"
           },
           "triggers_replace": null
         },
         "after": {
-          "id": "831d3664-a633-17f6-95a7-6bc28a6a0af2",
+          "id": "e1c31aaa-d241-9bbf-d3d7-50a9b095e7d2",
           "input": {
             "documents": ["{\"enabled\":true,\"name\":\"a\"}", "name: b\nenabled: true\n"],
             "json": "{\"replicas\":2,\"service\":{\"ports\":[80,443]}}",
@@ -64,7 +80,8 @@
         },
         "after_unknown": {
           "input": {
-            "documents": [false, false]
+            "documents": [false, false],
+            "unknown": true
           },
           "output": true
         },
@@ -83,6 +100,27 @@
           "output": {}
         }
       }
+    },
+    {
+      "address": "terraform_data.id",
+      "mode": "managed",
+      "type": "terraform_data",
+      "name": "id",
+      "provider_name": "terraform.io/builtin/terraform",
+      "change": {
+        "actions": ["create"],
+        "before": null,
+        "after": {
+          "input": null,
+          "output": null,
+          "triggers_replace": null
+        },
+        "after_unknown": {
+          "id": true
+        },
+        "before_sensitive": false,
+        "after_sensitive": {}
+      }
     }
   ],
   "prior_state": {
@@ -99,15 +137,17 @@
             "provider_name": "terraform.io/builtin/terraform",
             "schema_version": 0,
             "values": {
-              "id": "831d3664-a633-17f6-95a7-6bc28a6a0af2",
+              "id": "e1c31aaa-d241-9bbf-d3d7-50a9b095e7d2",
               "input": {
                 "documents": ["{\"enabled\":false,\"name\":\"a\"}", "name: b\nenabled: false\n"],
                 "json": "{\"replicas\":1,\"service\":{\"ports\":[80]}}",
+                "unknown": "{\"id\":\"a\"}",
                 "yaml": "\"enabled\": true\n\"replicas\": 1\n"
               },
               "output": {
                 "documents": ["{\"enabled\":false,\"name\":\"a\"}", "name: b\nenabled: false\n"],
                 "json": "{\"replicas\":1,\"service\":{\"ports\":[80]}}",
+                "unknown": "{\"id\":\"a\"}",
                 "yaml": "\"enabled\": true\n\"replicas\": 1\n"
               },
               "triggers_replace": null
@@ -119,7 +159,8 @@
               "output": {
                 "documents": [false, false]
               }
-            }
+            },
+            "depends_on": ["terraform_data.id"]
           }
         ]
       }
@@ -141,13 +182,29 @@
           "name": "foo-bar",
           "provider_config_key": "terraform",
           "expressions": {
-            "input": {}
+            "input": {
+              "references": ["terraform_data.id.id", "terraform_data.id"]
+            }
           },
+          "schema_version": 0
+        },
+        {
+          "address": "terraform_data.id",
+          "mode": "managed",
+          "type": "terraform_data",
+          "name": "id",
+          "provider_config_key": "terraform",
           "schema_version": 0
         }
       ]
     }
   },
-  "timestamp": "2026-11-03T09:28:10Z",
+  "relevant_attributes": [
+    {
+      "resource": "terraform_data.id",
+      "attribute": ["id"]
+    }
+  ],
+  "timestamp": "2026-11-03T09:31:57Z",
   "errored": false
 }

@@ -1,10 +1,10 @@
 <!-- tf-plan-format -->
 <details>
-<summary>🔄 <b>opentofu.tfplan.json</b> +0 ~1 −0</summary>
+<summary>✅🔄 <b>opentofu.tfplan.json</b> +1 ~1 −0</summary>
 
 ```diff
 @@ 🔄 terraform_data.foo-bar @@
-  id: "5de48861-0a5f-68d0-4c75-879478e15bb1"
+  id: "6246d726-a03f-96e4-9078-2c4a25f0e580"
   input:
     documents:
       - | json
@@ -29,6 +29,11 @@
           ]
         }
       }
+-   unknown: | json
+-     {
+-       "id": "a"
+-     }
++   unknown: (known after apply)
     yaml: | yaml
       "enabled": true
 -     "replicas": 1
@@ -52,20 +57,29 @@
 -         ]
 -       }
 -     }
+-   unknown: | json
+-     {
+-       "id": "a"
+-     }
 -   yaml: | yaml
 -     "enabled": true
 -     "replicas": 1
 + output: (known after apply)
   triggers_replace: null
+@@ ✅ terraform_data.id @@
++ id: (known after apply)
++ input: null
++ output: null
++ triggers_replace: null
 ```
 
 </details>
 <details>
-<summary>🔄 <b>terraform.tfplan.json</b> +0 ~1 −0</summary>
+<summary>✅🔄 <b>terraform.tfplan.json</b> +1 ~1 −0</summary>
 
 ```diff
 @@ 🔄 terraform_data.foo-bar @@
-  id: "831d3664-a633-17f6-95a7-6bc28a6a0af2"
+  id: "e1c31aaa-d241-9bbf-d3d7-50a9b095e7d2"
   input:
     documents:
       - | json
@@ -90,6 +104,11 @@
           ]
         }
       }
+-   unknown: | json
+-     {
+-       "id": "a"
+-     }
++   unknown: (known after apply)
     yaml: | yaml
       "enabled": true
 -     "replicas": 1
@@ -113,11 +132,20 @@
 -         ]
 -       }
 -     }
+-   unknown: | json
+-     {
+-       "id": "a"
+-     }
 -   yaml: | yaml
 -     "enabled": true
 -     "replicas": 1
 + output: (known after apply)
   triggers_replace: null
+@@ ✅ terraform_data.id @@
++ id: (known after apply)
++ input: null
++ output: null
++ triggers_replace: null
 ```
 
 </details>

@@ -1,6 +1,6 @@
 <!-- tf-plan-format -->
 <details>
-<summary>🔄 <b>opentofu.tfplan.json</b> +0 ~1 −0</summary>
+<summary>✅🔄 <b>opentofu.tfplan.json</b> +1 ~1 −0</summary>
 
 ```diff
 @@ 🔄 terraform_data.foo-bar @@
@@ -24,6 +24,11 @@
 +           80,
 +           443
       ...
+-   unknown: | json
+-     {
+-       "id": "a"
+-     }
++   unknown: (known after apply)
     yaml: | yaml
       ...
 -     "replicas": 1
@@ -47,15 +52,24 @@
 -         ]
 -       }
 -     }
+-   unknown: | json
+-     {
+-       "id": "a"
+-     }
 -   yaml: | yaml
 -     "enabled": true
 -     "replicas": 1
 + output: (known after apply)
+@@ ✅ terraform_data.id @@
++ id: (known after apply)
++ input: null
++ output: null
++ triggers_replace: null
 ```
 
 </details>
 <details>
-<summary>🔄 <b>terraform.tfplan.json</b> +0 ~1 −0</summary>
+<summary>✅🔄 <b>terraform.tfplan.json</b> +1 ~1 −0</summary>
 
 ```diff
 @@ 🔄 terraform_data.foo-bar @@
@@ -79,6 +93,11 @@
 +           80,
 +           443
       ...
+-   unknown: | json
+-     {
+-       "id": "a"
+-     }
++   unknown: (known after apply)
     yaml: | yaml
       ...
 -     "replicas": 1
@@ -102,10 +121,19 @@
 -         ]
 -       }
 -     }
+-   unknown: | json
+-     {
+-       "id": "a"
+-     }
 -   yaml: | yaml
 -     "enabled": true
 -     "replicas": 1
 + output: (known after apply)
+@@ ✅ terraform_data.id @@
++ id: (known after apply)
++ input: null
++ output: null
++ triggers_replace: null
 ```
 
 </details>
